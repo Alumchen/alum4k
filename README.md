@@ -1,97 +1,122 @@
 # Alum4K
 
-一个类似腾讯视频的信息流式影视站雏形：前台展示影视分类、搜索和详情页；服务端代理 TMDB 元数据；后台可添加 115 网盘资源、磁力链接，并管理注册用户的 VIP 权限。
+影视资料与下载资源网站：TMDB 采集、影视分类、115 网盘链接、磁力链接、用户注册和 VIP 权限管理。网站不提供在线播放。
 
-首页包含精选推荐、分类筛选、资源状态标签和内容统计；详情页包含在线播放/下载资源概览、选集播放和同类推荐。
+## 本地运行
 
-前台顶部搜索栏为精确搜索：只匹配本地媒体库中的准确片名、原名或 TMDB ID；后台 `TMDB 采集` 搜索仍保留 TMDB 模糊搜索，方便采集新条目。
-
-## 启动
+需要 Node.js 20+。
 
 ```bash
-npm install
+npm ci
 npm run dev
 ```
 
-打开 `http://localhost:5173`。
+前台：`http://localhost:5173/`
 
-## Linux 一键部署
+独立后台：`http://localhost:5173/admin`
 
-服务器需要先安装 Node.js 20+。在项目目录执行：
+前台搜索框显示“搜索影视名”，延续精确匹配片名、原名或 TMDB ID。后台 TMDB 搜索支持模糊查询。
 
-```bash
-bash scripts/deploy-linux.sh
+## 后台功能
+
+后台只允许管理员登录，前台导航不显示后台入口。
+
+- 媒体库：片名/ID 搜索、分类/资源筛选、分页、批量自动分类和批量删除。
+- 影视采集：搜索 TMDB、导入详情、编辑资料、指定首页推荐、保存或更新 TMDB 元数据。
+- 下载资源：115 网盘和磁力链接两个独立输入框，支持每行一条资源。详情页提供两种下载方式以及链接右侧的复制按钮。
+- 用户/VIP：用户名和会员状态筛选，续期 30 天/90 天/1 年、永久 VIP、自定义到期日、取消 VIP。续期保留已有剩余天数。
+- 站点设置：首页公告标题、正文、启停、显示频率以及预览。每次保存产生新公告版本，访客会重新看到更新后的公告。
+- 媒体库 JSON 导入/导出：导入支持按影视 ID 或 TMDB ID 更新已有条目，最多 2000 项、10 MB。
+
+未登录和非 VIP 用户可浏览影视信息，但接口不会返回下载地址或提取码。管理员和有效 VIP 可以查看链接。移除 VIP 菜单不会取消已有会员权限。
+
+默认管理员用户名：`admin`。初始密码来自 `.env` 的 `ADMIN_PASSWORD`，开发默认值为 `admin123456`。首次启动后，账号存入 `data/users.json`；此后修改 `.env` 不会修改已有密码。
+
+## 自动分类
+
+TMDB 详情采集后，根据类型标签自动归类为电影、电视剧、综艺、动漫、少儿、纪录片。没有足够类型标签时，按电影/剧集区分。短剧、游戏等分类可关闭“自动分类”后手动指定。
+
+媒体库中勾选条目并选择“自动分类”可重新分类已有影视。手动分类的条目保持原分类，除非主动执行批量自动分类。
+
+## 配置
+
+首次运行复制 `.env.example` 为 `.env`：
+
+```dotenv
+TMDB_BEARER_TOKEN=
+TMDB_API_KEY=
+API_PORT=5174
+ADMIN_PASSWORD=设置管理员初始密码
+AUTH_SECRET=随机长字符串
+HTTPS_PROXY=
+HTTP_PROXY=
 ```
 
-脚本会自动执行：
+TMDB 令牌和代理只在服务端使用。AList 不再参与播放，旧的 AList 路径不作为下载资源展示；有效的 115 分享链接和磁力链接会继续保留。
 
-- 安装 npm 依赖并构建前端 `dist`
-- 创建 systemd 服务 `alum4k`，用于运行后端 API
-- 安装或使用 Nginx，站点根目录指向 `dist`
-- 将 `/api/` 反向代理到 `127.0.0.1:5174`
+下载资源格式：
 
-可选环境变量：
-
-```bash
-APP_NAME=alum4k API_PORT=5174 WEB_PORT=80 bash scripts/deploy-linux.sh
+```text
+115 网盘：https://115.com/s/分享码 | 提取码 | 大小 | 备注
+磁力链接：magnet:?xt=urn:btih:完整哈希 | 大小 | 备注
 ```
 
-常用管理命令：
+每个条目最多 500 条资源。保存会校验链接类型并去重。
+
+## Linux 部署
+
+先安装 Node.js 20+，在可被 Nginx 读取的目录部署，例如 `/opt/alum4k`：
 
 ```bash
+git clone https://github.com/Alumchen/alum4k.git /opt/alum4k
+cd /opt/alum4k
+cp .env.example .env
+nano .env
+sudo env SERVER_NAME="alum4k.com www.alum4k.com" bash scripts/deploy-linux.sh
+```
+
+脚本安装依赖、构建前端、创建 systemd 服务和 Nginx 配置，将 `/api/` 代理至本机 5174 端口。自定义首次部署端口：
+
+```bash
+sudo env WEB_PORT=8080 bash scripts/deploy-linux.sh
+```
+
+**已有 Nginx 和 systemd 配置会保留，包括 HTTPS 证书、域名及自定义端口。** 修改现有端口或域名应直接编辑 `/etc/nginx/sites-available/alum4k.conf` 并检查/重新加载 Nginx。后台 `/admin` 使用同一域名，不需要开放额外端口。
+
+## 更新线上网站
+
+在云服务器终端执行：
+
+```bash
+cd /opt/alum4k
+sudo git pull --ff-only
+sudo bash scripts/update-linux.sh
+```
+
+只有上一条命令成功后才执行下一条。如果 Git 提示本地修改冲突，先保留现场，不要使用强制重置。
+
+更新脚本会在 `backups/时间戳/` 保存 `.env`、`data`、已有前端构建、Nginx 和 systemd 配置；构建成功后重启 API 并重新加载 Nginx，不重写现有证书配置。构建失败时恢复原前端文件，不重启后端。
+
+更新脚本不会覆盖用户、VIP 和公告数据。备份目录权限为仅部署用户可访问，不会提交到 GitHub。请定期把备份另存到服务器之外。
+
+常用命令：
+
+```bash
+sudo nginx -t
 sudo systemctl status alum4k
 sudo journalctl -u alum4k -f
 sudo systemctl restart alum4k
 ```
 
-## 账号和后台
+## 验证
 
-前台用户可以自行注册，但注册后默认不是 VIP。后台入口不会显示在主页左侧导航中，只有管理员登录后，顶部操作区才会出现 `后台管理`。
-
-默认管理员：
-
-```text
-用户名：admin
-默认密码：admin123456
+```bash
+npm test
+npm run build
+npx playwright install chromium
+npm run test:ui
 ```
 
-可在 `.env` 中用 `ADMIN_PASSWORD` 修改初始管理员密码。首次启动会创建 `data/users.json`，之后修改 `.env` 不会覆盖已经创建的 admin 密码。
+接口测试使用临时目录，不修改实际媒体库和账号数据。界面测试验证独立后台登录、下载切换/复制、自动分类、公告、桌面和手机布局，截图保存到 `artifacts/ui/`。已安装 Edge 时可设置 `PLAYWRIGHT_CHANNEL=msedge`。
 
-## VIP 权限
-
-- 非 VIP 用户：可以浏览影视信息，但不能查看 115 网盘链接、磁力链接，也不能在线播放。
-- VIP 用户：可以查看 115 网盘链接、磁力下载链接，并使用在线播放。VIP 支持永久会员或指定到期日，到期后会自动失去资源查看和在线播放权限。
-- 管理员：登录 admin 后进入后台，在 `用户 / VIP` 区域可给已注册用户开通 `30天`、`90天`、`1年`、`永久` VIP，也可以手动选择到期日或取消 VIP。
-
-## TMDB 采集
-
-复制 `.env.example` 为 `.env`，填写 `TMDB_BEARER_TOKEN` 或 `TMDB_API_KEY`。推荐使用 TMDB 的 API 访问令牌，密钥只在服务端使用，浏览器不会看到。
-
-后台 `TMDB 采集` 中输入片名搜索，点结果载入详情；补充分类、资费、状态、演员、海报、简介和资源后，点击 `保存` 或 `采集并保存`。
-
-## 115 / 磁力资源
-
-后台 `下载资源` 分成三个输入框：
-
-```text
-AList 路径：/115网盘/电影/片名/片名.mp4
-115 网盘链接：https://115.com/s/xxxx | 提取码 | 4K/20GB | 备注
-磁力链接：magnet:?xt=urn:btih:... | 大小 | 备注
-```
-
-详情页简介下方会显示 `立即播放` 按钮。在线播放不会直接打开 115 分享链接，而是请求后端 `/api/watch/...`，由服务端通过 AList/OpenList 解析 115 文件路径后播放。
-
-## AList/OpenList 配置
-
-要让 VIP 在线观看生效，需要先把 115 挂载到 AList/OpenList，然后在 `.env` 配置：
-
-```text
-ALIST_BASE_URL=http://127.0.0.1:5244
-ALIST_TOKEN=
-```
-
-后台用于在线播放的 115 资源地址请填写 AList 文件路径，例如 `/电影/片名.mkv`。普通 `https://115.com/s/...` 分享链接会保留为 VIP 下载入口，但不会被当作在线播放地址。
-
-后台资源区内置 `AList 文件选择器`：输入目录路径后点击 `打开目录`，可以浏览 AList 目录；点击视频文件会自动加入 `AList 路径` 输入框；点击 `批量导入` 会把当前目录下的全部视频文件一次性加入，并按多条 AList 路径生成多集/多资源播放入口。前台详情页会为多条 AList 播放资源显示选集按钮。
-
-> 请只播放你有权访问的个人网盘内容，不要把 115 源当作公开盗链分发。
+影视元数据和图片来源于 TMDB。本项目未获 TMDB 认可或认证。

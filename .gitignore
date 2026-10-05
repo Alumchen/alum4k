@@ -5,3 +5,7 @@ dist/
 npm-debug.log*
 *.log
 data/users.json
+backups/
+data/site-settings.json
+data/*.tmp
+artifacts/

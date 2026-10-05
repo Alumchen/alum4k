@@ -1,4 +1,4 @@
-import type { AListListResult, AuthState, DownloadResource, MediaItem, MediaType, ResourceCheckResult, User } from "./types";
+import type { AuthState, MediaItem, MediaType, SiteSettings, User } from "./types";
 
 const TOKEN_KEY = "alum4k_token";
 
@@ -62,7 +62,7 @@ export async function fetchCurrentUser() {
     headers: { authorization: `Bearer ${token}` }
   });
   if (!response.ok) {
-    setAuthToken("");
+    if (response.status === 401) setAuthToken("");
     return null;
   }
 
@@ -125,18 +125,18 @@ export async function setUserVip(username: string, vip: boolean, vipUntil?: stri
   return payload.user;
 }
 
-export async function checkResource(resource: Partial<DownloadResource>) {
-  const payload = await writeJson<{ result: ResourceCheckResult }>("/api/admin/check-resource", "POST", { resource });
-  return payload.result;
+export function fetchSettings() {
+  return readJson<SiteSettings>("/api/settings");
 }
 
-export async function listAList(path: string) {
-  const payload = await writeJson<{ result: AListListResult }>("/api/admin/alist/list", "POST", { path });
-  return payload.result;
+export function saveSettings(settings: SiteSettings) {
+  return writeJson<SiteSettings>("/api/admin/settings", "PUT", settings);
 }
 
-export function watchUrl(mediaId: string, resourceId: string) {
-  const token = getAuthToken();
-  const suffix = token ? `?token=${encodeURIComponent(token)}` : "";
-  return `/api/watch/${encodeURIComponent(mediaId)}/${encodeURIComponent(resourceId)}${suffix}`;
+export function batchMedia(action: "classify" | "delete", ids: string[]) {
+  return writeJson<{ count: number }>("/api/admin/media/batch", "POST", { action, ids });
+}
+
+export function importLibrary(items: Partial<MediaItem>[]) {
+  return writeJson<{ count: number }>("/api/admin/media/import", "POST", { items });
 }

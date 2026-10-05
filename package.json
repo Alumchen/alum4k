@@ -8,6 +8,8 @@
     "dev:api": "tsx watch server/index.ts",
     "dev:web": "vite --host 0.0.0.0",
     "build": "tsc --noEmit && vite build",
+    "test": "node --import tsx --test tests/site.test.ts",
+    "test:ui": "node --import tsx tests/ui.ts",
     "preview": "vite preview --host 0.0.0.0",
     "serve:api": "tsx server/index.ts",
     "start": "npm run serve:api"
@@ -29,6 +31,7 @@
     "@types/node": "^22.5.4",
     "@types/react": "^18.3.5",
     "@types/react-dom": "^18.3.0",
+    "playwright": "^1.62.1",
     "typescript": "^5.5.4"
   }
 }

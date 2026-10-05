@@ -5,9 +5,21 @@ APP_NAME="${APP_NAME:-alum4k}"
 APP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 API_PORT="${API_PORT:-5174}"
 WEB_PORT="${WEB_PORT:-80}"
+SERVER_NAME="${SERVER_NAME:-_}"
 SERVICE_FILE="/etc/systemd/system/${APP_NAME}.service"
 NGINX_AVAILABLE="/etc/nginx/sites-available/${APP_NAME}.conf"
 NGINX_ENABLED="/etc/nginx/sites-enabled/${APP_NAME}.conf"
+
+if [[ ! "${APP_NAME}" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+  echo "APP_NAME may only contain letters, numbers, underscores and hyphens."
+  exit 1
+fi
+for port in "${API_PORT}" "${WEB_PORT}"; do
+  if [[ ! "${port}" =~ ^[0-9]+$ ]] || (( 10#${port} < 1 || 10#${port} > 65535 )); then
+    echo "Ports must be integers between 1 and 65535."
+    exit 1
+  fi
+done
 
 if [[ "${EUID}" -eq 0 ]]; then
   SUDO=""
@@ -48,9 +60,29 @@ fi
 
 cd "${APP_DIR}"
 
+if [[ "${UPDATE_ONLY:-0}" == "1" && ( ! -f "${SERVICE_FILE}" || ! -f "${NGINX_AVAILABLE}" ) ]]; then
+  echo "No existing deployment found. Run scripts/deploy-linux.sh first."
+  exit 1
+fi
+
+BACKUP_DIR="${APP_DIR}/backups/$(date -u +%Y%m%dT%H%M%SZ)-$$"
+umask 077
+mkdir -p "${BACKUP_DIR}"
+for file in .env data dist; do
+  if [[ -e "${file}" ]]; then
+    cp -a "${file}" "${BACKUP_DIR}/"
+  fi
+done
+for file in "${SERVICE_FILE}" "${NGINX_AVAILABLE}"; do
+  if [[ -f "${file}" ]]; then
+    ${SUDO} cp -a "${file}" "${BACKUP_DIR}/"
+  fi
+done
+echo "Backup: ${BACKUP_DIR}"
+
 if [[ ! -f ".env" && -f ".env.example" ]]; then
   cp .env.example .env
-  echo "Created .env from .env.example. Edit .env after deployment if you need TMDB/AList credentials."
+  echo "Created .env from .env.example. Configure TMDB credentials and change the admin password and auth secret before public access."
 fi
 
 if [[ -f "package-lock.json" ]]; then
@@ -59,11 +91,22 @@ else
   npm install
 fi
 
-npm run build
+if ! npm run build; then
+  if [[ -d "${BACKUP_DIR}/dist" ]]; then
+    mkdir -p dist
+    cp -a "${BACKUP_DIR}/dist/." dist/
+  fi
+  echo "Build failed. Existing service and Nginx configuration were not changed."
+  exit 1
+fi
+
+umask 022
+chmod -R a+rX dist
 
 NPM_BIN="$(command -v npm)"
 
-${SUDO} tee "${SERVICE_FILE}" >/dev/null <<EOF
+if [[ ! -f "${SERVICE_FILE}" ]]; then
+  ${SUDO} tee "${SERVICE_FILE}" >/dev/null <<EOF
 [Unit]
 Description=Alum4K API Service
 After=network.target
@@ -80,14 +123,18 @@ RestartSec=5
 [Install]
 WantedBy=multi-user.target
 EOF
+else
+  echo "Keeping existing systemd service: ${SERVICE_FILE}"
+fi
 
 ${SUDO} systemctl daemon-reload
-${SUDO} systemctl enable --now "${APP_NAME}"
+${SUDO} systemctl enable "${APP_NAME}"
 
-${SUDO} tee "${NGINX_AVAILABLE}" >/dev/null <<EOF
+if [[ ! -f "${NGINX_AVAILABLE}" ]]; then
+  ${SUDO} tee "${NGINX_AVAILABLE}" >/dev/null <<EOF
 server {
     listen ${WEB_PORT};
-    server_name _;
+    server_name ${SERVER_NAME};
 
     root ${APP_DIR}/dist;
     index index.html;
@@ -110,12 +157,20 @@ server {
     }
 }
 EOF
+else
+  echo "Keeping existing Nginx configuration, including domains, ports and HTTPS."
+fi
 
-${SUDO} ln -sfn "${NGINX_AVAILABLE}" "${NGINX_ENABLED}"
+if [[ ! -e "${NGINX_ENABLED}" && ! -L "${NGINX_ENABLED}" ]]; then
+  ${SUDO} ln -s "${NGINX_AVAILABLE}" "${NGINX_ENABLED}"
+fi
 ${SUDO} nginx -t
+${SUDO} systemctl restart "${APP_NAME}"
 ${SUDO} systemctl reload nginx
 
 echo "Alum4K deployed."
-echo "Web: http://localhost:${WEB_PORT}"
-echo "API health: http://localhost:${WEB_PORT}/api/health"
+echo "Configured listeners:"
+${SUDO} awk '/^[[:space:]]*(listen|server_name)[[:space:]]/ {print "  " $0}' "${NGINX_AVAILABLE}"
+echo "API health: http://127.0.0.1:${API_PORT}/api/health"
+echo "Backup: ${BACKUP_DIR}"
 echo "Service logs: ${SUDO} journalctl -u ${APP_NAME} -f"

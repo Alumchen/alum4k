@@ -36,6 +36,10 @@ export interface MediaItem {
   originalTitle?: string;
   year?: number;
   category: string;
+  categoryMode?: "auto" | "manual";
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   region: string;
   access: "免费" | "会员" | "VIP";
   status: string;

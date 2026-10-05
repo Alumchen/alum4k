@@ -62,6 +62,10 @@ export interface MediaItem {
   originalTitle?: string;
   year?: number;
   category: string;
+  categoryMode?: "auto" | "manual";
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
   region: string;
   access: "免费" | "会员" | "VIP";
   status: string;
@@ -87,4 +91,16 @@ export interface User {
 export interface AuthState {
   token: string;
   user: User;
+}
+
+export interface Announcement {
+  enabled: boolean;
+  title: string;
+  content: string;
+  frequency: "session" | "daily" | "always";
+  revision: string;
+}
+
+export interface SiteSettings {
+  announcement: Announcement;
 }

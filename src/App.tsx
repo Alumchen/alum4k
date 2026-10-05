@@ -24,13 +24,16 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { fetchCurrentUser, fetchMedia, login, register, setAuthToken, watchUrl } from "./api";
-import AdminPanel from "./AdminPanel";
-import type { DownloadResource, MediaItem, User } from "./types";
+import { fetchCurrentUser, fetchMedia, fetchSettings, login, register, setAuthToken } from "./api";
+import { copyText } from "./clipboard";
+import Dialog from "./Dialog";
+import AnnouncementDialog, { dismissAnnouncement, shouldShowAnnouncement } from "./AnnouncementDialog";
+
+import type { DownloadResource, MediaItem, User, Announcement } from "./types";
+import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
 
 const navItems = [
   { label: "首页", icon: Home },
-  { label: "VIP会员", icon: Crown, badge: "618" },
   { label: "电视剧", icon: Tv },
   { label: "电影", icon: Film },
   { label: "综艺", icon: MonitorPlay },
@@ -66,15 +69,14 @@ function PosterImage({ item }: { item: MediaItem }) {
 }
 
 function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: MediaItem) => void }) {
-  const playCount = playableResourceCount(item);
   const resourceCount = item.resources?.length ?? 0;
 
   return (
     <button className="media-card" onClick={() => onSelect(item)} type="button">
       <div className="media-poster-wrap">
         <PosterImage item={item} />
-        <span className={classNames("media-resource-pill", playCount > 0 && "playable")}>
-          {playCount > 0 ? `${playCount} 个可播` : resourceCount > 0 ? `${resourceCount} 个资源` : "待补资源"}
+        <span className={"media-resource-pill"}>
+          {resourceCount > 0 ? `${resourceCount} 个资源` : "待补资源"}
         </span>
         <span className="media-hover-action">
           <Play size={15} fill="currentColor" />
@@ -130,7 +132,6 @@ function Spotlight({
 }) {
   if (!item) return null;
 
-  const playCount = playableResourceCount(item);
   const resourceCount = item.resources?.length ?? 0;
 
   return (
@@ -152,7 +153,7 @@ function Spotlight({
             <Play size={17} fill="currentColor" />
             查看详情
           </button>
-          <span>{playCount ? `${playCount} 个在线播放源` : resourceCount ? `${resourceCount} 个下载资源` : "等待后台补充资源"}</span>
+          <span>{resourceCount ? `${resourceCount} 个下载资源` : "待补资源"}</span>
         </div>
       </div>
     </section>
@@ -180,7 +181,7 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
             >
               <Icon size={18} />
               <span>{item.label}</span>
-              {item.badge ? <em>{item.badge}</em> : null}
+
             </button>
           );
         })}
@@ -189,152 +190,49 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
   );
 }
 
-function Topbar({
-  query,
-  onQuery,
-  onSearch,
-  currentUser,
-  onOpenAuth,
-  onOpenAdmin,
-  onLogout
-}: {
-  query: string;
-  onQuery: (value: string) => void;
-  onSearch: (value: string) => void;
-  currentUser: User | null;
-  onOpenAuth: () => void;
-  onOpenAdmin: () => void;
-  onLogout: () => void;
+function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, onNotice }: {
+  query: string; onQuery: (value: string) => void; onSearch: (value: string) => void;
+  currentUser: User | null; onOpenAuth: () => void; onLogout: () => void; onNotice?: () => void;
 }) {
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (inputRef.current && inputRef.current.value !== query) {
-      inputRef.current.value = query;
-    }
-  }, [query]);
-
-  function submitSearch(event?: FormEvent<HTMLFormElement>) {
-    event?.preventDefault();
-    const value = inputRef.current?.value ?? "";
-    onQuery(value);
-    onSearch(value);
-  }
-
-  return (
-    <header className="topbar">
-      <form className="search-box" onSubmit={submitSearch}>
-        <input
-          name="query"
-          ref={inputRef}
-          defaultValue={query}
-          onChange={(event) => onQuery(event.target.value)}
-          placeholder="精确搜索片名 / TMDB ID"
-        />
-        <button type="submit" title="精确搜索">
-          <Search size={20} />
-        </button>
-      </form>
-      <div className="top-actions">
-        <button type="button" title="会员专区">
-          <Crown size={18} />
-          <span>会员专区</span>
-        </button>
-        <button type="button" title="下载客户端">
-          <Download size={18} />
-          <span>下载客户端</span>
-        </button>
-        <button type="button" title="观看历史">
-          <History size={18} />
-        </button>
-        <button type="button" title="通知">
-          <Bell size={18} />
-        </button>
-        {currentUser?.role === "admin" ? (
-          <button type="button" onClick={onOpenAdmin} title="后台管理">
-            <Settings size={18} />
-            <span>后台管理</span>
-          </button>
-        ) : null}
-        {currentUser ? (
-          <button type="button" onClick={onLogout} title="退出登录">
-            <UserRound size={18} />
-            <span>{currentUser.username} · {vipLabel(currentUser)}</span>
-          </button>
-        ) : (
-          <button className="avatar" type="button" onClick={onOpenAuth} title="登录/注册">
-            <UserRound size={18} />
-          </button>
-        )}
-      </div>
-    </header>
-  );
+  return <header className="topbar">
+    <form className="search-box" onSubmit={(event) => { event.preventDefault(); onSearch(query); }}>
+      <input name="query" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="搜索影视名" aria-label="搜索影视名" />
+      <button type="submit" title="搜索" aria-label="搜索"><Search size={20} /></button>
+    </form>
+    <div className="top-actions">
+      {onNotice ? <button type="button" title="站点公告" onClick={onNotice}><Bell size={18} /></button> : null}
+      {currentUser ? <button type="button" title="退出登录" onClick={onLogout}><UserRound size={18} /><span>{currentUser.username} · {vipLabel(currentUser)}</span></button>
+        : <button className="avatar" type="button" onClick={onOpenAuth} title="登录/注册" aria-label="登录/注册"><UserRound size={18} /></button>}
+    </div>
+  </header>;
 }
 
-function AuthModal({
-  onClose,
-  onAuthed
-}: {
-  onClose: () => void;
-  onAuthed: (user: User) => void;
-}) {
+function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user: User) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
-  const [username, setUsername] = useState(mode === "login" ? "admin" : "");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
-    setMessage("");
+    setLoading(true); setMessage("");
     try {
       const result = mode === "login" ? await login(username, password) : await register(username, password);
-      onAuthed(result.user);
-      onClose();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "操作失败。");
-    } finally {
-      setLoading(false);
-    }
+      onAuthed(result.user); onClose();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "操作失败。"); }
+    finally { setLoading(false); }
   }
-
-  return (
-    <div className="auth-backdrop">
-      <form className="auth-modal" onSubmit={submit}>
-        <div className="auth-head">
-          <strong>{mode === "login" ? "登录" : "注册"}</strong>
-          <button type="button" onClick={onClose} title="关闭">
-            <X size={18} />
-          </button>
-        </div>
-        <label>
-          用户名
-          <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="admin" />
-        </label>
-        <label>
-          密码
-          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="至少 6 位" />
-        </label>
-        {message ? <p>{message}</p> : null}
-        <button type="submit" disabled={loading}>
-          {loading ? "处理中..." : mode === "login" ? "登录" : "注册"}
-        </button>
-        <button
-          className="auth-switch"
-          type="button"
-          onClick={() => {
-            setMode(mode === "login" ? "register" : "login");
-            setUsername(mode === "login" ? "" : "admin");
-            setPassword("");
-            setMessage("");
-          }}
-        >
-          {mode === "login" ? "没有账号？注册用户" : "已有账号？去登录"}
-        </button>
-      </form>
-    </div>
-  );
+  return <Dialog title={mode === "login" ? "登录" : "注册"} onClose={onClose} className="auth-dialog">
+    <form className="auth-fields" onSubmit={submit}>
+      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" required maxLength={20} /></label>
+      <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} /></label>
+      {message ? <p className="form-error" role="alert">{message}</p> : null}
+      <button className="primary-action" type="submit" disabled={loading}>{loading ? "处理中…" : mode === "login" ? "登录" : "注册"}</button>
+      <button className="auth-switch" type="button" disabled={loading} onClick={() => { setMode(mode === "login" ? "register" : "login"); setPassword(""); setMessage(""); }}>
+        {mode === "login" ? "没有账号？注册用户" : "已有账号？去登录"}
+      </button>
+    </form>
+  </Dialog>;
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -350,19 +248,8 @@ function downloadLabel(resource: DownloadResource) {
   return resource.type === "magnet" ? "磁力下载" : "115网盘";
 }
 
-function isAListWatchResource(resource: DownloadResource | undefined) {
-  const url = resource?.url.trim() ?? "";
-  if (!resource || resource.type !== "115" || !url) return false;
-  if (url.startsWith("/")) return true;
-  return /^https?:\/\//i.test(url) && !/115\.com/i.test(url);
-}
-
-function playableResourceCount(item: MediaItem) {
-  return item.resources?.filter(isAListWatchResource).length ?? 0;
-}
-
 function downloadResourceCount(item: MediaItem) {
-  return item.resources?.filter((resource) => !isAListWatchResource(resource)).length ?? 0;
+  return item.resources?.length ?? 0;
 }
 
 function shortText(value: string, max = 84) {
@@ -373,8 +260,8 @@ function shortText(value: string, max = 84) {
 function pickFeaturedItem(items: MediaItem[]) {
   return [...items]
     .sort((left, right) => {
-      const rightScore = (right.backdropPath ? 8 : 0) + playableResourceCount(right) * 3 + (right.rating ?? 0);
-      const leftScore = (left.backdropPath ? 8 : 0) + playableResourceCount(left) * 3 + (left.rating ?? 0);
+      const rightScore = (right.backdropPath ? 8 : 0) + downloadResourceCount(right) * 3 + (right.featured ? 50 : 0) + (right.rating ?? 0);
+      const leftScore = (left.backdropPath ? 8 : 0) + downloadResourceCount(left) * 3 + (left.featured ? 50 : 0) + (left.rating ?? 0);
       return rightScore - leftScore;
     })[0];
 }
@@ -390,7 +277,7 @@ function pickRelatedItems(current: MediaItem, items: MediaItem[]) {
         (item.mediaType === current.mediaType ? 5 : 0) +
         (item.region === current.region ? 2 : 0) +
         sharedGenres * 4 +
-        playableResourceCount(item) * 2 +
+        downloadResourceCount(item) * 2 +
         (item.rating ?? 0);
       return { item, score };
     })
@@ -411,249 +298,82 @@ function vipLabel(user: User) {
   return "普通用户";
 }
 
-function absoluteUrl(path: string) {
-  return `${window.location.origin}${path}`;
+function DownloadLink({ resource }: { resource: DownloadResource }) {
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState("");
+  const timer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(timer.current), []);
+  async function copy() {
+    setError("");
+    try { await copyText(resource.url); setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 2000); }
+    catch (error) { setError(error instanceof Error ? error.message : "复制失败。"); }
+  }
+  return <div className="download-row resource-link-row">
+    <div className="resource-link-info">
+      <strong>{resource.title || downloadLabel(resource)}</strong>
+      <small>{[resource.size, resource.note].filter(Boolean).join(" · ")}</small>
+      {resource.code ? <small>提取码：{resource.code}</small> : null}
+      <div className="resource-url-line">
+        <a href={resource.url} target="_blank" rel="noreferrer" title={resource.url}>{resource.url}</a>
+        <button type="button" className="copy-link-button" onClick={copy} title={copied ? "已复制" : "复制链接"} aria-label={copied ? "已复制链接" : "复制链接"}>
+          {copied ? <Check size={16} /> : <Copy size={16} />}<span>{copied ? "已复制" : "复制"}</span>
+        </button>
+      </div>
+      {error ? <small className="form-error" role="alert">{error}</small> : null}
+    </div>
+    <a className="resource-open-button" href={resource.url} target="_blank" rel="noreferrer"><ExternalLink size={16} />{resource.type === "magnet" ? "磁力下载" : "打开网盘"}</a>
+  </div>;
 }
 
-function DetailView({
-  item,
-  currentUser,
-  relatedItems,
-  onOpenAuth,
-  onBack,
-  onSelectRelated
-}: {
-  item: MediaItem;
-  currentUser: User | null;
-  relatedItems: MediaItem[];
-  onOpenAuth: () => void;
-  onBack: () => void;
-  onSelectRelated: (item: MediaItem) => void;
+function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSelectRelated }: {
+  item: MediaItem; currentUser: User | null; relatedItems: MediaItem[]; onOpenAuth: () => void;
+  onBack: () => void; onSelectRelated: (item: MediaItem) => void;
 }) {
-  const resources = useMemo(() => item.resources ?? [], [item.resources]);
+  const resources = item.resources ?? [];
   const vip = hasVipAccess(currentUser);
-  const playableResources = useMemo(() => resources.filter(isAListWatchResource), [resources]);
-  const downloadCount = downloadResourceCount(item);
-  const fallbackResource = resources.find((resource) => resource.type === "115");
-  const [showPlayer, setShowPlayer] = useState(false);
-  const [playerNotice, setPlayerNotice] = useState("");
-  const [selectedResourceId, setSelectedResourceId] = useState("");
-  const selectedPlayableResource = playableResources.find((resource) => resource.id === selectedResourceId) ?? playableResources[0];
-  const playableResource = selectedPlayableResource ?? fallbackResource;
-  const canWatchOnline = vip && Boolean(selectedPlayableResource);
-  const playerSrc = selectedPlayableResource ? watchUrl(item.id, selectedPlayableResource.id) : "";
-
-  useEffect(() => {
-    setShowPlayer(false);
-    setPlayerNotice("");
-    setSelectedResourceId(playableResources[0]?.id ?? "");
-  }, [item.id, currentUser?.role, currentUser?.vip, playableResources]);
-
-  async function copy(value: string) {
-    await navigator.clipboard?.writeText(value);
-  }
-
-  return (
-    <section className="detail-view">
-      <button className="back-button" onClick={onBack} type="button">
-        <ArrowLeft size={18} />
-        返回
-      </button>
-      <div className="detail-hero">
-        {item.backdropPath ? <img src={item.backdropPath} alt="" /> : null}
-        <div className="detail-shade" />
-        <div className="detail-info">
-          <div className="detail-poster">
-            <PosterImage item={item} />
-          </div>
-          <div className="detail-copy">
-            <span className="detail-label">
-              <Crown size={15} />
-              {item.access} · {item.category}
-            </span>
-            <h1>{item.title}</h1>
-            <p className="detail-subtitle">
-              {item.originalTitle ? `${item.originalTitle} · ` : ""}
-              {item.year ?? "未知年份"} · {item.region} · {item.status}
-            </p>
-            <div className="detail-tags">
-              {item.rating ? <span>TMDB {item.rating}</span> : null}
-              {item.genres.map((genre) => (
-                <span key={genre}>{genre}</span>
-              ))}
-            </div>
-            <p className="overview">{item.overview}</p>
-            <p className="cast-line">{item.cast.length ? `主演：${item.cast.join(" / ")}` : "TMDB 条目暂未绑定演员信息"}</p>
-            <div className="detail-metrics">
-              <span>
-                <Play size={15} />
-                {playableResources.length} 个在线播放源
-              </span>
-              <span>
-                <Download size={15} />
-                {downloadCount} 个下载入口
-              </span>
-              <span>
-                <Crown size={15} />
-                {vip ? "当前可观看" : "VIP可观看"}
-              </span>
-            </div>
-            {playableResource ? (
-              <div className="detail-actions">
-                <button
-                  className="play-now-button"
-                  type="button"
-                  onClick={() => {
-                    if (!vip) {
-                      onOpenAuth();
-                      return;
-                    }
-                    if (!canWatchOnline) {
-                      setShowPlayer(false);
-                      setPlayerNotice("在线观看需要在后台把 115 资源地址填写为 AList 路径，例如 /电影/片名.mkv。普通 115 分享链接仅作为下载入口。");
-                      return;
-                    }
-                    setPlayerNotice("");
-                    setShowPlayer(true);
-                  }}
-                >
-                  <Play size={18} fill="currentColor" />
-                  {!vip ? "VIP登录后播放" : canWatchOnline ? "立即播放" : "配置AList后播放"}
-                </button>
-              </div>
-            ) : null}
-          </div>
+  const [resourceType, setResourceType] = useState<"115" | "magnet">("115");
+  useEffect(() => { setResourceType(resources.some((resource) => resource.type === "115") ? "115" : "magnet"); }, [item.id]);
+  const visible = resources.filter((resource) => resource.type === resourceType);
+  return <section className="detail-view">
+    <button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button>
+    <div className="detail-hero">
+      {item.backdropPath ? <img src={item.backdropPath} alt="" /> : null}<div className="detail-shade" />
+      <div className="detail-info">
+        <div className="detail-poster"><PosterImage item={item} /></div>
+        <div className="detail-copy">
+          <span className="detail-label">{item.category}</span><h1>{item.title}</h1>
+          <p className="detail-subtitle">{item.originalTitle ? item.originalTitle + " · " : ""}{item.year ?? "未知年份"} · {item.region} · {item.status}</p>
+          <div className="detail-tags">{item.rating ? <span>TMDB {item.rating}</span> : null}{item.genres.map((genre) => <span key={genre}>{genre}</span>)}</div>
+          <p className="overview">{item.overview}</p>
+          {item.cast.length ? <p className="cast-line">主演：{item.cast.join(" / ")}</p> : null}
+          <div className="detail-metrics"><span><Download size={15} />{resources.length} 个下载资源</span></div>
         </div>
       </div>
-
-      <div className="watch-layout">
-        <div className="download-panel">
-          <div className="panel-title">
-            <span>{showPlayer && canWatchOnline ? "在线观看" : "下载资源"}</span>
-            <small>{resources.length} 条</small>
-          </div>
-          {playerNotice ? <div className="player-notice">{playerNotice}</div> : null}
-          {vip && playableResources.length > 1 ? (
-            <div className="watch-resource-grid">
-              {playableResources.map((resource, index) => (
-                <button
-                  className={classNames("episode-button", selectedPlayableResource?.id === resource.id && "active")}
-                  key={resource.id}
-                  type="button"
-                  onClick={() => {
-                    setSelectedResourceId(resource.id);
-                    setPlayerNotice("");
-                    setShowPlayer(true);
-                  }}
-                >
-                  <span>{resource.title || `第${index + 1}集`}</span>
-                  <small>{resource.size || resource.note || "AList在线播放"}</small>
-                </button>
-              ))}
-            </div>
-          ) : null}
-          {showPlayer && selectedPlayableResource && canWatchOnline ? (
-            <div className="online-player">
-              <video
-                key={selectedPlayableResource.id}
-                controls
-                autoPlay
-                src={playerSrc}
-                poster={item.backdropPath}
-                onError={() => setPlayerNotice("视频已经解析成功，但当前浏览器无法解码这个文件。此片源是 H.265/HEVC，网页播放不稳定；建议换 H.264/AAC 版本，或复制播放地址用 PotPlayer/VLC 打开。")}
-              />
-              <div className="stream-actions">
-                <button type="button" onClick={() => copy(absoluteUrl(playerSrc))}>复制播放地址</button>
-                <a href={playerSrc} download>
-                  下载原片
-                </a>
-              </div>
-              <p>网页播放器最稳的是 H.264/AAC MP4；H.265/HEVC、部分 4K 或特殊封装建议转码后再在线播放。</p>
-            </div>
-          ) : !vip ? (
-            <div className="player-placeholder">
-              <Crown size={36} />
-              <span>VIP会员才可以查看 115 网盘链接、磁力下载链接和在线播放。</span>
-              <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button>
-            </div>
-          ) : resources.length ? (
-            <div className="download-list">
-              {resources.map((resource) => (
-                <div className="download-row" key={resource.id}>
-                  <div>
-                    <strong>{resource.title || downloadLabel(resource)}</strong>
-                    <small>
-                      {downloadLabel(resource)}
-                      {resource.size ? ` · ${resource.size}` : ""}
-                      {resource.note ? ` · ${resource.note}` : ""}
-                    </small>
-                    {resource.code ? <small>提取码：{resource.code}</small> : null}
-                  </div>
-                  <div className="download-actions">
-                    <button type="button" onClick={() => copy(resource.url)}>复制</button>
-                    <a href={resource.url} target="_blank" rel="noreferrer">
-                      下载
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="player-placeholder">
-              <Settings size={36} />
-              <span>这个条目还没有添加 115 网盘或磁力下载链接</span>
-            </div>
-          )}
+    </div>
+    <div className="watch-layout download-only-layout">
+      <section className="download-panel">
+        <div className="panel-title"><span>下载资源</span><small>{resources.length} 条</small></div>
+        <div className="download-type-tabs" role="tablist" aria-label="下载方式">
+          {(["115", "magnet"] as const).map((type) => <button key={type} type="button" role="tab" aria-selected={resourceType === type}
+            className={classNames(resourceType === type && "active")} onClick={() => setResourceType(type)}>
+            {type === "115" ? <Download size={16} /> : <Link2 size={16} />}{type === "115" ? "115网盘" : "磁力链接"}<span>{resources.filter((resource) => resource.type === type).length}</span>
+          </button>)}
         </div>
-
-        <aside className="episode-panel">
-          <div className="panel-title">
-            <span>资源说明</span>
-            <small>下载</small>
-          </div>
-          <div className="download-help">
-            <p>VIP会员可在线观看，播放地址由服务端通过 AList/OpenList 解析 115 文件路径生成。</p>
-            <p>VIP会员也可查看 115 网盘和磁力下载入口。</p>
-          </div>
-          <div className="resource-summary">
-            <div>
-              <strong>{playableResources.length}</strong>
-              <span>在线播放</span>
-            </div>
-            <div>
-              <strong>{downloadCount}</strong>
-              <span>下载入口</span>
-            </div>
-            <div>
-              <strong>{item.episodes?.length ?? 0}</strong>
-              <span>集数资料</span>
-            </div>
-          </div>
-          {relatedItems.length ? (
-            <div className="related-block">
-              <div className="panel-title">
-                <span>同类推荐</span>
-                <small>{relatedItems.length} 部</small>
-              </div>
-              <div className="related-list">
-                {relatedItems.map((related) => (
-                  <button key={related.id} type="button" onClick={() => onSelectRelated(related)}>
-                    {related.posterPath ? <img src={related.posterPath} alt="" /> : <span className="related-poster-fallback"><Film size={18} /></span>}
-                    <span>
-                      <strong>{related.title}</strong>
-                      <small>
-                        {related.year ?? "未知年份"} · {related.category} · {related.rating ? `TMDB ${related.rating}` : related.status}
-                      </small>
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </aside>
-      </div>
-    </section>
-  );
+        {!vip ? <div className="player-placeholder"><Crown size={32} />
+          <span>{currentUser ? "当前账号尚未开通 VIP，开通后可查看下载链接。" : "登录并开通 VIP 后可查看下载链接。"}</span>
+          {!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : null}
+        </div> : visible.length ? <div className="download-list">{visible.map((resource) => <DownloadLink key={resource.id} resource={resource} />)}</div>
+          : <div className="resource-empty"><Download size={26} /><span>暂无{resourceType === "115" ? "115网盘" : "磁力"}链接</span></div>}
+      </section>
+      <aside className="episode-panel">
+        <div className="panel-title"><span>同类推荐</span><small>{relatedItems.length} 部</small></div>
+        <div className="related-list">{relatedItems.map((related) => <button key={related.id} type="button" onClick={() => onSelectRelated(related)}>
+          {related.posterPath ? <img src={related.posterPath} alt="" loading="lazy" /> : <span className="related-poster-fallback"><Film size={18} /></span>}
+          <span><strong>{related.title}</strong><small>{related.year ?? "未知年份"} · {related.category}</small></span>
+        </button>)}</div>
+      </aside>
+    </div>
+  </section>;
 }
 
 function HomeView({
@@ -677,8 +397,8 @@ function HomeView({
   onSelect: (item: MediaItem) => void;
   searchMode: boolean;
 }) {
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
   const featured = !loading && !searchMode ? pickFeaturedItem(items) : undefined;
-  const playableTotal = items.filter((item) => playableResourceCount(item) > 0).length;
   const downloadTotal = items.filter((item) => downloadResourceCount(item) > 0).length;
   const vipTotal = items.filter((item) => item.access !== "免费").length;
 
@@ -697,34 +417,31 @@ function HomeView({
             </button>
           ))}
         </div>
-        <button className="expand-button" type="button">
-          展开
+        <button className="expand-button" type="button" onClick={() => setFiltersExpanded(!filtersExpanded)} aria-expanded={filtersExpanded}>
+          {filtersExpanded ? "收起筛选" : "展开筛选"}
           <ChevronDown size={16} />
         </button>
       </div>
 
-      <div className="filters">
+      {filtersExpanded ? <div className="filters">
         <FilterRow label="类型" values={genreFilters} active={filters.genre} onChange={(genre) => setFilters({ ...filters, genre })} />
         <FilterRow label="资费" values={accessFilters} active={filters.access} onChange={(access) => setFilters({ ...filters, access })} />
         <FilterRow label="地区" values={regionFilters} active={filters.region} onChange={(region) => setFilters({ ...filters, region })} />
-      </div>
+      </div> : null}
 
       <Spotlight item={featured} onSelect={onSelect} />
 
       <div className="section-title">
         <div>
-          <h2>{searchMode ? "精确搜索结果" : activeNav === "首页" ? "正在热播" : activeNav}</h2>
-          <p>{searchMode ? "仅匹配准确片名、原名或 TMDB ID" : "TMDB 元数据 · 115网盘下载 · 磁力链接 · 本地媒体库"}</p>
+          <h2>{searchMode ? "搜索结果" : activeNav === "首页" ? "精选影视" : activeNav}</h2>
+          <p>{searchMode ? `找到 ${items.length} 部影视` : "115网盘 · 磁力下载"}</p>
         </div>
         <div className="section-stats">
           <span>
             <Grid2X2 size={16} />
             {items.length} 部
           </span>
-          <span>
-            <Play size={16} />
-            {playableTotal} 可播
-          </span>
+
           <span>
             <Crown size={16} />
             {vipTotal} 会员
@@ -759,168 +476,71 @@ export default function App() {
   const [items, setItems] = useState<MediaItem[]>([]);
   const [displayItems, setDisplayItems] = useState<MediaItem[]>([]);
   const [selected, setSelected] = useState<MediaItem | null>(null);
-  const [activeNav, setActiveNav] = useState("电视剧");
+  const [activeNav, setActiveNav] = useState("首页");
   const [activeTab, setActiveTab] = useState("热门");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [searchMode, setSearchMode] = useState(false);
-  const [adminMode, setAdminMode] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [announcement, setAnnouncement] = useState<Announcement | null>(null);
+  const [noticeOpen, setNoticeOpen] = useState(false);
   const [filters, setFilters] = useState({ genre: "全部", access: "全部", region: "全部" });
+  const searchRequest = useRef(0);
 
   async function refreshLibrary() {
     const media = await fetchMedia();
-    setItems(media);
-    if (!searchMode) setDisplayItems(media);
+    setItems(media); setDisplayItems(media);
+    setSelected((current) => current ? media.find((item) => item.id === current.id) ?? null : null);
+    setSearchMode(false); setLoadError("");
   }
-
   useEffect(() => {
-    refreshLibrary().finally(() => setLoading(false));
-    fetchCurrentUser().then(setCurrentUser);
+    refreshLibrary().catch((error) => setLoadError(error.message)).finally(() => setLoading(false));
+    fetchCurrentUser().then(setCurrentUser).catch(() => undefined);
+    fetchSettings().then(({ announcement }) => { setAnnouncement(announcement); setNoticeOpen(shouldShowAnnouncement(announcement)); }).catch(() => undefined);
   }, []);
 
   const filteredItems = useMemo(() => {
     let next = displayItems;
-
-    if (!searchMode && activeNav !== "首页" && activeNav !== "VIP会员") {
-      next = next.filter((item) => item.category === activeNav);
-    }
-
-    if (!searchMode && activeNav === "VIP会员") {
-      next = next.filter((item) => item.access !== "免费");
-    }
-
-    if (filters.genre !== "全部") {
-      next = next.filter((item) => item.genres.includes(filters.genre));
-    }
-    if (filters.access !== "全部") {
-      next = next.filter((item) => item.access === filters.access);
-    }
-    if (filters.region !== "全部") {
-      next = next.filter((item) => item.region === filters.region);
-    }
-
-    if (activeTab === "高分好评") {
-      next = [...next].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    }
-    if (activeTab === "最新上架") {
-      next = [...next].sort((a, b) => (b.year ?? 0) - (a.year ?? 0));
-    }
-
+    if (!searchMode && activeNav !== "首页") next = next.filter((item) => item.category === activeNav);
+    if (filters.genre !== "全部") next = next.filter((item) => item.genres.includes(filters.genre));
+    if (filters.access !== "全部") next = next.filter((item) => item.access === filters.access);
+    if (filters.region !== "全部") next = next.filter((item) => item.region === filters.region);
+    if (activeTab === "高分好评") next = [...next].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+    if (activeTab === "最新上架") next = [...next].sort((a, b) => (Date.parse(b.createdAt ?? "") || (b.year ?? 0)) - (Date.parse(a.createdAt ?? "") || (a.year ?? 0)));
     return next;
   }, [activeNav, activeTab, displayItems, filters, searchMode]);
-
-  const relatedItems = useMemo(() => (selected ? pickRelatedItems(selected, items) : []), [items, selected]);
+  const relatedItems = useMemo(() => selected ? pickRelatedItems(selected, items) : [], [items, selected]);
 
   function handleNav(value: string) {
-    setAdminMode(false);
-    setActiveNav(value);
-    setSearchMode(false);
-    setDisplayItems(items);
-    setSelected(null);
+    searchRequest.current++; setLoading(false); setLoadError(""); setQuery("");
+    setActiveNav(value); setSearchMode(false); setDisplayItems(items); setSelected(null);
+    setFilters({ genre: "全部", access: "全部", region: "全部" });
   }
-
   async function handleSearch(value: string) {
-    const term = value.trim();
-    setQuery(term);
-    setSelected(null);
-
-    if (!term) {
-      setSearchMode(false);
-      setDisplayItems(items);
-      return;
-    }
-
-    setLoading(true);
-    setSearchMode(true);
-    try {
-      const result = await fetchMedia(term, true);
-      setDisplayItems(result);
-    } finally {
-      setLoading(false);
-    }
+    const term = value.trim(); const request = ++searchRequest.current;
+    setQuery(term); setSelected(null); setLoadError("");
+    setFilters({ genre: "全部", access: "全部", region: "全部" });
+    if (!term) { setSearchMode(false); setDisplayItems(items); setLoading(false); return; }
+    setLoading(true); setSearchMode(true);
+    try { const result = await fetchMedia(term, true); if (request === searchRequest.current) setDisplayItems(result); }
+    catch (error) { if (request === searchRequest.current) setLoadError(error instanceof Error ? error.message : "搜索失败。"); }
+    finally { if (request === searchRequest.current) setLoading(false); }
   }
-
-  return (
-    <div className="app-shell">
-      <Sidebar active={activeNav} onChange={handleNav} />
-      <main className="main-shell">
-        <Topbar
-          query={query}
-          onQuery={setQuery}
-          onSearch={handleSearch}
-          currentUser={currentUser}
-          onOpenAuth={() => setAuthOpen(true)}
-          onOpenAdmin={() => {
-            setAdminMode(true);
-            setSelected(null);
-            setSearchMode(false);
-          }}
-          onLogout={() => {
-            setAuthToken("");
-            setCurrentUser(null);
-            setAdminMode(false);
-          }}
-        />
-        {adminMode ? (
-          <AdminPanel
-            library={items}
-            currentUser={currentUser}
-            onOpenAuth={() => setAuthOpen(true)}
-            onLibraryChange={refreshLibrary}
-          />
-        ) : selected ? (
-          <DetailView
-            item={selected}
-            currentUser={currentUser}
-            relatedItems={relatedItems}
-            onOpenAuth={() => setAuthOpen(true)}
-            onBack={() => setSelected(null)}
-            onSelectRelated={(item) => {
-              setSelected(item);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-          />
-        ) : (
-          <HomeView
-            items={filteredItems}
-            loading={loading}
-            activeNav={activeNav}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            filters={filters}
-            setFilters={setFilters}
-            onSelect={setSelected}
-            searchMode={searchMode}
-          />
-        )}
-      </main>
-      <div className="mobile-tabbar">
-        {navItems.slice(0, 5).map((item) => {
-          const Icon = item.icon;
-          return (
-            <button
-              className={classNames(activeNav === item.label && "active")}
-              key={item.label}
-              onClick={() => handleNav(item.label)}
-              type="button"
-            >
-              <Icon size={18} />
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
-      </div>
-      {authOpen ? (
-        <AuthModal
-          onClose={() => setAuthOpen(false)}
-          onAuthed={(user) => {
-            setCurrentUser(user);
-            refreshLibrary();
-          }}
-        />
-      ) : null}
-    </div>
-  );
+  return <div className="app-shell">
+    <Sidebar active={activeNav} onChange={handleNav} />
+    <main className="main-shell">
+      <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)}
+        onNotice={announcement?.enabled ? () => setNoticeOpen(true) : undefined}
+        onLogout={() => { setAuthToken(""); setCurrentUser(null); setSelected(null); refreshLibrary().catch((error) => setLoadError(error.message)); }} />
+      {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={() => refreshLibrary().catch((error) => setLoadError(error.message))}>重试</button></div> : null}
+      {selected ? <DetailView item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={() => setSelected(null)}
+        onSelectRelated={(item) => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
+        : <HomeView items={filteredItems} loading={loading} activeNav={activeNav} activeTab={activeTab} setActiveTab={setActiveTab} filters={filters} setFilters={setFilters} onSelect={setSelected} searchMode={searchMode} />}
+    </main>
+    <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(activeNav === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
+    {authOpen ? <AuthModal onClose={() => setAuthOpen(false)} onAuthed={(user) => { setCurrentUser(user); refreshLibrary().catch((error) => setLoadError(error.message)); }} /> : null}
+    {announcement && noticeOpen && !selected && !authOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
+  </div>;
 }

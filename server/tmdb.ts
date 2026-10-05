@@ -1,6 +1,7 @@
 import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { MediaItem, MediaType } from "./types";
+import { classifyMedia } from "../shared/media";
 
 const API_BASE = "https://api.themoviedb.org/3";
 const IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -112,7 +113,7 @@ async function tmdbFetch<T>(pathname: string, params: Record<string, string> = {
   const proxied = await readWithProxy<T>(url, headers);
   if (proxied) return proxied;
 
-  const response = await fetch(url, { headers });
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) });
 
   if (!response.ok) {
     const detail = await response.text();
@@ -174,6 +175,7 @@ export function mapTmdbSearchResult(result: TmdbSearchResult): MediaItem | null 
 }
 
 export function mapTmdbDetail(detail: TmdbDetail, mediaType: MediaType): MediaItem {
+  const genres = detail.genres?.map((genre) => genre.name) ?? [];
   return {
     id: `tmdb-${mediaType}-${detail.id}`,
     tmdbId: detail.id,
@@ -181,12 +183,13 @@ export function mapTmdbDetail(detail: TmdbDetail, mediaType: MediaType): MediaIt
     title: detail.title ?? detail.name ?? "未命名",
     originalTitle: detail.original_title ?? detail.original_name,
     year: yearFromDate(detail.release_date ?? detail.first_air_date),
-    category: mediaType === "movie" ? "电影" : "电视剧",
+    category: classifyMedia({ mediaType, genres }),
+    categoryMode: "auto",
     region: regionFrom(detail),
     access: "会员",
     status: mediaType === "movie" ? "待绑定片源" : "待绑定剧集",
     rating: detail.vote_average ? Number(detail.vote_average.toFixed(1)) : undefined,
-    genres: detail.genres?.map((genre) => genre.name) ?? [],
+    genres,
     cast: detail.credits?.cast?.slice(0, 6).map((person) => person.name) ?? [],
     overview: detail.overview ?? "暂无简介。",
     posterPath: imageUrl(detail.poster_path, "w500"),
