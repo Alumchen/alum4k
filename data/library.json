@@ -1,0 +1,705 @@
+[
+  {
+    "id": "tmdb-movie-798753-2",
+    "tmdbId": 798753,
+    "mediaType": "movie",
+    "title": "超能一家人",
+    "originalTitle": "超能一家人",
+    "year": 2023,
+    "category": "电影",
+    "region": "内地",
+    "access": "会员",
+    "status": "正片",
+    "rating": 4,
+    "genres": [
+      "奇幻",
+      "喜剧",
+      "动作"
+    ],
+    "cast": [
+      "艾伦",
+      "陶慧",
+      "张琪",
+      "韩彦博",
+      "沈腾",
+      "Anastasiya Sedikova"
+    ],
+    "overview": "郑前（艾伦 饰）出生在一个叫喀西契克的远东城市，因与家人关系疏远，离家出走。如今重回故里，只为参加爷爷葬礼。没想到，天降陨石竟让爷爷死而复生，而一家人只要在一起竟能触发超能力，可有一人离开，超能力便立刻消失。与此同时，喀西契克邪恶市长乞乞科夫（沈腾 饰）正想方设法抢夺郑前开发的“理财神器”APP。郑前被迫和超能力家人团结起来，共同抵抗乞乞科夫····",
+    "posterPath": "https://image.tmdb.org/t/p/w500/iRvzM5rsJUP2Sye87bU3TH1jcKn.jpg",
+    "backdropPath": "https://image.tmdb.org/t/p/w1280/oQfWuVzOKfFm5oRCfLgdN5TCEvT.jpg",
+    "resources": [
+      {
+        "id": "alist-01",
+        "type": "115",
+        "title": "正片",
+        "url": "/115网盘/电影/沈腾/超能一家人 (2023)/超能一家人(2023).2160p.h265.8bit.mp4",
+        "code": "",
+        "size": "",
+        "note": "AList路径"
+      }
+    ],
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "正片",
+        "subtitle": "下载资源"
+      }
+    ]
+  },
+  {
+    "id": "tmdb-movie-538331",
+    "tmdbId": 538331,
+    "mediaType": "movie",
+    "title": "西虹市首富",
+    "originalTitle": "西虹市首富",
+    "year": 2018,
+    "category": "电影",
+    "region": "内地",
+    "access": "会员",
+    "status": "正片",
+    "rating": 7,
+    "genres": [
+      "喜剧"
+    ],
+    "cast": [
+      "沈腾",
+      "宋芸桦",
+      "张一鸣",
+      "张晨光",
+      "常远",
+      "魏翔"
+    ],
+    "overview": "西虹市丙级球队大翔队的守门员王多鱼（沈腾 饰）因比赛失利被教练开除，一筹莫展之际王多鱼突然收到神秘人士金老板（张晨光 饰）的邀请，被告知自己竟然是保险大亨王老太爷（李立群 饰）的唯一继承人，遗产高达百亿！但是王老太爷给出了一个非常奇葩的条件，那就是要求王多鱼在一个月内花光十亿，还不能告诉身边人，否则失去继承权。王多鱼毫不犹豫签下了“军令状”，与好友庄强（张一鸣 饰）以及财务夏竹（宋芸桦 饰）一起开启了“挥金之旅”，即将成为西虹市首富的王多鱼，第一次感受到了做富人的快乐，同时也发现想要挥金如土实在没有那么简单！",
+    "posterPath": "https://image.tmdb.org/t/p/w500/AeAjzra5IvNS1KU7Uxx7ySDb1mW.jpg",
+    "backdropPath": "https://image.tmdb.org/t/p/w1280/huJOhVMWb3slceLm6ftmOir2RHl.jpg",
+    "resources": [
+      {
+        "id": "alist-01",
+        "type": "115",
+        "title": "AList在线播放",
+        "url": "/115网盘/电影/沈腾/西虹市首富 (2018)/西虹市首富(2018).2160p.h265.8bit.mp4",
+        "code": "",
+        "size": "",
+        "note": "AList路径"
+      }
+    ],
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "正片",
+        "subtitle": "下载资源"
+      }
+    ]
+  },
+  {
+    "id": "tmdb-movie-912649",
+    "tmdbId": 912649,
+    "mediaType": "movie",
+    "title": "毒液：最后一舞",
+    "originalTitle": "Venom: The Last Dance",
+    "year": 2024,
+    "category": "电影",
+    "region": "美国",
+    "access": "会员",
+    "status": "待绑定片源",
+    "rating": 6.7,
+    "genres": [
+      "科幻",
+      "动作",
+      "冒险"
+    ],
+    "cast": [
+      "汤姆·哈迪",
+      "切瓦特·埃加福",
+      "朱诺·坦普尔",
+      "瑞斯·伊凡斯",
+      "斯蒂芬·格拉汉姆",
+      "佩吉·陆"
+    ],
+    "overview": "毒液和埃迪迎来至暗时刻。一边是人类神秘组织的穷追猛打，一边是外星共生体大军入侵地球，他们一心同体，花式解锁海陆空作战新形态。面对两边的疯狂追捕，这对亡命搭档将被迫做出毁灭性决定，为他们的最后一舞拉下帷幕。",
+    "posterPath": "https://image.tmdb.org/t/p/w500/eMnWFvrTtNk0kJCVkKGzUUvUWJI.jpg",
+    "backdropPath": "https://image.tmdb.org/t/p/w1280/3V4kLQg0kSqPLctI5ziYWabAZYF.jpg",
+    "source": {
+      "provider": "115",
+      "type": "alist",
+      "pickcode": "",
+      "fileId": "",
+      "path": "",
+      "directUrl": ""
+    },
+    "episodes": [
+      {
+        "id": "e01",
+        "title": "正片",
+        "subtitle": "115源",
+        "source": {
+          "provider": "115",
+          "type": "alist",
+          "pickcode": "",
+          "fileId": "",
+          "path": "",
+          "directUrl": ""
+        }
+      }
+    ]
+  },
+  {
+    "id": "shogun-2024",
+    "tmdbId": 126308,
+    "mediaType": "tv",
+    "title": "幕府将军",
+    "originalTitle": "Shogun",
+    "year": 2024,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "会员",
+    "status": "全10集",
+    "rating": 9.1,
+    "genres": [
+      "剧情",
+      "历史",
+      "战争"
+    ],
+    "cast": [
+      "真田广之",
+      "泽井杏奈",
+      "浅野忠信"
+    ],
+    "overview": "航海家、武士与权力核心的暗流相遇，一场围绕信任、身份和野心展开的史诗故事逐步铺开。",
+    "posterPath": "/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg",
+    "backdropPath": "/4woSOUD0equAYzvwhWBHIJDCM88.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/幕府将军/Season 1",
+      "pickcode": "demo_shogun_s01"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "安谨",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_shogun_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "两位主君",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_shogun_02"
+        }
+      },
+      {
+        "id": "s01e03",
+        "title": "第3集",
+        "subtitle": "明日",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_shogun_03"
+        }
+      }
+    ]
+  },
+  {
+    "id": "three-body-2024",
+    "tmdbId": 108545,
+    "mediaType": "tv",
+    "title": "三体",
+    "originalTitle": "3 Body Problem",
+    "year": 2024,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "会员",
+    "status": "全8集",
+    "rating": 8.4,
+    "genres": [
+      "科幻",
+      "悬疑",
+      "冒险"
+    ],
+    "cast": [
+      "杰茜·洪",
+      "约翰·布莱德利",
+      "艾莎·冈萨雷斯"
+    ],
+    "overview": "跨越时代的科学谜题把一群研究者卷入未知文明的阴影，现实与虚拟之间的边界逐渐消失。",
+    "posterPath": "/ykZ7hlShkdRQaL2aiieXdEMmrLb.jpg",
+    "backdropPath": "/uCI3vQQaJxPUd7wXbN9G0tESkgV.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/三体/Season 1",
+      "pickcode": "demo_three_body_s01"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "倒计时",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_three_body_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "红岸",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_three_body_02"
+        }
+      }
+    ]
+  },
+  {
+    "id": "last-of-us-2023",
+    "tmdbId": 100088,
+    "mediaType": "tv",
+    "title": "最后生还者",
+    "originalTitle": "The Last of Us",
+    "year": 2023,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "VIP",
+    "status": "全9集",
+    "rating": 8.8,
+    "genres": [
+      "剧情",
+      "动作",
+      "冒险"
+    ],
+    "cast": [
+      "佩德罗·帕斯卡",
+      "贝拉·拉姆齐"
+    ],
+    "overview": "文明崩塌多年后，一名幸存者护送少女穿越废土，彼此成为对方继续前进的理由。",
+    "posterPath": "/uKvVjHNqB5VmOrdxqAt2F7J78ED.jpg",
+    "backdropPath": "/hPea3Qy5Gd6z4kJLUruBbwAH8Rm.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/最后生还者/Season 1",
+      "pickcode": "demo_tlou_s01"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "黎明时分",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_tlou_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "感染区",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_tlou_02"
+        }
+      }
+    ]
+  },
+  {
+    "id": "severance-2022",
+    "tmdbId": 95396,
+    "mediaType": "tv",
+    "title": "人生切割术",
+    "originalTitle": "Severance",
+    "year": 2022,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "会员",
+    "status": "更新至第2季",
+    "rating": 9,
+    "genres": [
+      "悬疑",
+      "科幻",
+      "剧情"
+    ],
+    "cast": [
+      "亚当·斯科特",
+      "布丽特·洛薇尔",
+      "帕特丽夏·阿奎特"
+    ],
+    "overview": "办公室里的记忆被切割成两段，温顺的日常在裂缝中露出令人不安的真相。",
+    "posterPath": "/pPHpeI2X1qEd1CS1SeyrdhZ4qnT.jpg",
+    "backdropPath": "/l0qVZIpXtIo7km9u5Yqh0nKPOr5.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/人生切割术",
+      "pickcode": "demo_severance"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "好消息关于地狱",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_severance_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "半循环",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_severance_02"
+        }
+      }
+    ]
+  },
+  {
+    "id": "dune-part-two-2024",
+    "tmdbId": 693134,
+    "mediaType": "movie",
+    "title": "沙丘：第二部",
+    "originalTitle": "Dune: Part Two",
+    "year": 2024,
+    "category": "电影",
+    "region": "美国",
+    "access": "VIP",
+    "status": "正片",
+    "rating": 8.6,
+    "genres": [
+      "科幻",
+      "冒险",
+      "剧情"
+    ],
+    "cast": [
+      "提莫西·查拉梅",
+      "赞达亚",
+      "丽贝卡·弗格森"
+    ],
+    "overview": "保罗在沙丘深处面对命运、爱情与复仇的交叉路口，帝国秩序被卷入新的风暴。",
+    "posterPath": "/1pdfLvkbY9ohJlCjQH2CZjjYVvJ.jpg",
+    "backdropPath": "/xOMo8BRK7PfcJv9JCnx7s5hj0PX.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电影/沙丘：第二部.mkv",
+      "pickcode": "demo_dune2"
+    },
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "正片",
+        "subtitle": "4K HDR",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_dune2_main"
+        }
+      }
+    ]
+  },
+  {
+    "id": "interstellar-2014",
+    "tmdbId": 157336,
+    "mediaType": "movie",
+    "title": "星际穿越",
+    "originalTitle": "Interstellar",
+    "year": 2014,
+    "category": "电影",
+    "region": "美国",
+    "access": "免费",
+    "status": "正片",
+    "rating": 9.4,
+    "genres": [
+      "科幻",
+      "冒险",
+      "剧情"
+    ],
+    "cast": [
+      "马修·麦康纳",
+      "安妮·海瑟薇",
+      "杰西卡·查斯坦"
+    ],
+    "overview": "当人类未来悬于一线，一支探险队穿越虫洞，寻找延续文明的可能。",
+    "posterPath": "/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg",
+    "backdropPath": "/rAiYTfKGqDCRIIqo664sY9XZIvQ.jpg",
+    "source": {
+      "provider": "115",
+      "type": "direct",
+      "directUrl": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+    },
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "试看",
+        "subtitle": "演示直链",
+        "source": {
+          "provider": "115",
+          "type": "direct",
+          "directUrl": "https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4"
+        }
+      }
+    ]
+  },
+  {
+    "id": "inception-2010",
+    "tmdbId": 27205,
+    "mediaType": "movie",
+    "title": "盗梦空间",
+    "originalTitle": "Inception",
+    "year": 2010,
+    "category": "电影",
+    "region": "美国",
+    "access": "免费",
+    "status": "正片",
+    "rating": 9.3,
+    "genres": [
+      "动作",
+      "科幻",
+      "悬疑"
+    ],
+    "cast": [
+      "莱昂纳多·迪卡普里奥",
+      "约瑟夫·高登-莱维特",
+      "玛丽昂·歌迪亚"
+    ],
+    "overview": "一支盗梦团队潜入意识深处，在层层梦境中执行近乎不可能的植入任务。",
+    "posterPath": "/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg",
+    "backdropPath": "/s3TBrRGB1iav7gFOCNx3H31MoES.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电影/盗梦空间.mkv",
+      "pickcode": "demo_inception"
+    },
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "正片",
+        "subtitle": "1080P",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_inception_main"
+        }
+      }
+    ]
+  },
+  {
+    "id": "spirited-away-2001",
+    "tmdbId": 129,
+    "mediaType": "movie",
+    "title": "千与千寻",
+    "originalTitle": "Spirited Away",
+    "year": 2001,
+    "category": "动漫",
+    "region": "日本",
+    "access": "会员",
+    "status": "正片",
+    "rating": 9.5,
+    "genres": [
+      "动画",
+      "奇幻",
+      "冒险"
+    ],
+    "cast": [
+      "柊瑠美",
+      "入野自由",
+      "夏木真理"
+    ],
+    "overview": "误入神灵世界的少女在陌生规则中寻找勇气，也一点点找回自己的名字。",
+    "posterPath": "/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg",
+    "backdropPath": "/mSDsSDwaP3E7dEfUPWy4J0djt4O.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/动漫/千与千寻.mkv",
+      "pickcode": "demo_spirited"
+    },
+    "episodes": [
+      {
+        "id": "movie",
+        "title": "正片",
+        "subtitle": "修复版",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_spirited_main"
+        }
+      }
+    ]
+  },
+  {
+    "id": "breaking-bad-2008",
+    "tmdbId": 1396,
+    "mediaType": "tv",
+    "title": "绝命毒师",
+    "originalTitle": "Breaking Bad",
+    "year": 2008,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "会员",
+    "status": "全5季",
+    "rating": 9.6,
+    "genres": [
+      "犯罪",
+      "剧情"
+    ],
+    "cast": [
+      "布莱恩·科兰斯顿",
+      "亚伦·保尔"
+    ],
+    "overview": "一名化学教师被命运推向危险边缘，从绝望求生走向权力迷局。",
+    "posterPath": "/3xnWaLQjelJDDF7LT1WBo6f4BRe.jpg",
+    "backdropPath": "/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/绝命毒师",
+      "pickcode": "demo_breaking_bad"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "飞行员",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_bb_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "猫在袋中",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_bb_02"
+        }
+      }
+    ]
+  },
+  {
+    "id": "game-of-thrones-2011",
+    "tmdbId": 1399,
+    "mediaType": "tv",
+    "title": "权力的游戏",
+    "originalTitle": "Game of Thrones",
+    "year": 2011,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "VIP",
+    "status": "全8季",
+    "rating": 9.2,
+    "genres": [
+      "剧情",
+      "奇幻",
+      "冒险"
+    ],
+    "cast": [
+      "艾米莉亚·克拉克",
+      "基特·哈灵顿",
+      "彼特·丁拉基"
+    ],
+    "overview": "王座、家族与长夜交织成大陆的命运，每一次联盟都可能成为下一次背叛。",
+    "posterPath": "/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg",
+    "backdropPath": "/2OMB0ynKlyIenMJWI2Dy9IWT4c.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/权力的游戏",
+      "pickcode": "demo_got"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "凛冬将至",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_got_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "国王大道",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_got_02"
+        }
+      }
+    ]
+  },
+  {
+    "id": "wandavision-2021",
+    "tmdbId": 85271,
+    "mediaType": "tv",
+    "title": "旺达幻视",
+    "originalTitle": "WandaVision",
+    "year": 2021,
+    "category": "电视剧",
+    "region": "美国",
+    "access": "会员",
+    "status": "全9集",
+    "rating": 8.1,
+    "genres": [
+      "科幻",
+      "奇幻",
+      "喜剧"
+    ],
+    "cast": [
+      "伊丽莎白·奥尔森",
+      "保罗·贝坦尼"
+    ],
+    "overview": "复古情景喜剧的糖衣下，悲伤与混乱正在一点点改写小镇的真实。",
+    "posterPath": "/glKDfE6btIRcVB5zrjspRIs4r52.jpg",
+    "backdropPath": "/lOr9NKxh4vMweufMOUDJjJhCRHW.jpg",
+    "source": {
+      "provider": "115",
+      "type": "pan115",
+      "path": "/电视剧/旺达幻视",
+      "pickcode": "demo_wanda"
+    },
+    "episodes": [
+      {
+        "id": "s01e01",
+        "title": "第1集",
+        "subtitle": "现场观众",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_wanda_01"
+        }
+      },
+      {
+        "id": "s01e02",
+        "title": "第2集",
+        "subtitle": "别换台",
+        "source": {
+          "provider": "115",
+          "type": "pan115",
+          "pickcode": "demo_wanda_02"
+        }
+      }
+    ]
+  }
+]
