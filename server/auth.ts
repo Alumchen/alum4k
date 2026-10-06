@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
 import type { Request, Response, NextFunction } from "express";
@@ -32,6 +32,13 @@ const dataDir = path.resolve(process.cwd(), "data");
 const usersFile = path.join(dataDir, "users.json");
 const tokenSecret = process.env.AUTH_SECRET || "alum4k-local-dev-secret";
 const adminPassword = process.env.ADMIN_PASSWORD || "admin123456";
+let pendingWrite: Promise<unknown> = Promise.resolve();
+
+function mutateUsers<T>(update: (users: StoredUser[]) => Promise<T>) {
+  const next = pendingWrite.then(async () => update(await readUsers()));
+  pendingWrite = next.catch(() => undefined);
+  return next;
+}
 
 function base64url(input: Buffer | string) {
   return Buffer.from(input).toString("base64url");
@@ -62,14 +69,17 @@ async function readUsers(): Promise<StoredUser[]> {
       vip: user.role === "admin" || Boolean("vip" in user ? user.vip : false),
       vipUntil: user.role === "admin" ? null : "vipUntil" in user ? user.vipUntil ?? null : null
     }));
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
 }
 
 async function writeUsers(users: StoredUser[]) {
   await mkdir(dataDir, { recursive: true });
-  await writeFile(usersFile, `${JSON.stringify(users, null, 2)}\n`, "utf-8");
+  const temporaryFile = `${usersFile}.${crypto.randomUUID()}.tmp`;
+  await writeFile(temporaryFile, `${JSON.stringify(users, null, 2)}\n`, { encoding: "utf-8", mode: 0o600 });
+  await rename(temporaryFile, usersFile);
 }
 
 function isVipActive(user: Pick<StoredUser, "role" | "vip" | "vipUntil">) {
@@ -131,58 +141,68 @@ export async function userFromRequest(request: Request): Promise<PublicUser | nu
 }
 
 export async function ensureAdminUser() {
-  const users = await readUsers();
-  const admin = users.find((user) => user.username === "admin");
-  if (admin) {
-    admin.vip = true;
-    await writeUsers(users);
-    return;
-  }
+  return mutateUsers(async (users) => {
+    const admin = users.find((user) => user.username === "admin");
+    if (admin) {
+      admin.vip = true;
+      await writeUsers(users);
+      return;
+    }
 
-  const hash = hashPassword(adminPassword);
-  users.unshift({
-    username: "admin",
-    role: "admin",
-    vip: true,
-    vipUntil: null,
-    salt: hash.salt,
-    passwordHash: hash.passwordHash,
-    createdAt: new Date().toISOString()
+    const hash = hashPassword(adminPassword);
+    users.unshift({
+      username: "admin",
+      role: "admin",
+      vip: true,
+      vipUntil: null,
+      salt: hash.salt,
+      passwordHash: hash.passwordHash,
+      createdAt: new Date().toISOString()
+    });
+    await writeUsers(users);
   });
-  await writeUsers(users);
 }
 
-export async function registerUser(username: string, password: string) {
+function validateAccount(username: string, password: string, minimum = 6) {
   const normalized = username.trim().toLowerCase();
   if (!/^[a-z0-9_\u4e00-\u9fa5]{3,20}$/i.test(normalized)) {
     throw new Error("用户名需为 3-20 位，可包含中文、字母、数字或下划线。");
   }
-  if (normalized === "admin") {
-    throw new Error("admin 是内置管理员账号。");
-  }
-  if (password.length < 6) {
-    throw new Error("密码至少 6 位。");
-  }
+  if (password.length < minimum || password.length > 128) throw new Error(`密码需为 ${minimum}-128 位。`);
+  return normalized;
+}
 
-  const users = await readUsers();
-  if (users.some((user) => user.username === normalized)) {
-    throw new Error("用户名已存在。");
-  }
+async function createAccount(username: string, password: string, role: "user" | "admin") {
+  const normalized = validateAccount(username, password, role === "admin" ? 10 : 6);
+  if (normalized === "admin") throw new Error("admin 是内置管理员账号。");
+  return mutateUsers(async (users) => {
+    if (users.some((user) => user.username === normalized)) {
+      throw new Error("用户名已存在。");
+    }
 
-  const hash = hashPassword(password);
-  const user: StoredUser = {
-    username: normalized,
-    role: "user",
-    vip: false,
-    vipUntil: null,
-    salt: hash.salt,
-    passwordHash: hash.passwordHash,
-    createdAt: new Date().toISOString()
-  };
-  users.push(user);
-  await writeUsers(users);
+    const hash = hashPassword(password);
+    const user: StoredUser = {
+      username: normalized,
+      role,
+      vip: role === "admin",
+      vipUntil: null,
+      salt: hash.salt,
+      passwordHash: hash.passwordHash,
+      createdAt: new Date().toISOString()
+    };
+    users.push(user);
+    await writeUsers(users);
 
-  const safe = publicUser(user);
+    return publicUser(user);
+  });
+}
+
+export async function createAdminUser(username: string, password: string) {
+  return createAccount(username, password, "admin");
+}
+
+export async function registerUser(username: string, password: string) {
+  const safe = await createAccount(username, password, "user");
   return { user: safe, token: createToken(safe) };
 }
 
@@ -220,23 +240,24 @@ function normalizeVipUntil(value: unknown) {
 }
 
 export async function setUserVip(username: string, vip: boolean, vipUntil?: unknown) {
-  const users = await readUsers();
-  const user = users.find((entry) => entry.username === username.trim().toLowerCase());
-  if (!user) {
-    throw new Error("用户不存在。");
-  }
+  return mutateUsers(async (users) => {
+    const user = users.find((entry) => entry.username === username.trim().toLowerCase());
+    if (!user) {
+      throw new Error("用户不存在。");
+    }
 
-  const normalizedUntil = normalizeVipUntil(vipUntil);
-  user.vip = user.role === "admin" ? true : vip;
-  user.vipUntil = user.role === "admin" ? null : vip ? normalizedUntil === undefined ? user.vipUntil ?? null : normalizedUntil : null;
-  await writeUsers(users);
-  return {
-    username: user.username,
-    role: user.role,
-    vip: isVipActive(user),
-    vipUntil: user.role === "admin" ? null : user.vipUntil ?? null,
-    createdAt: user.createdAt
-  };
+    const normalizedUntil = normalizeVipUntil(vipUntil);
+    user.vip = user.role === "admin" ? true : vip;
+    user.vipUntil = user.role === "admin" ? null : vip ? normalizedUntil === undefined ? user.vipUntil ?? null : normalizedUntil : null;
+    await writeUsers(users);
+    return {
+      username: user.username,
+      role: user.role,
+      vip: isVipActive(user),
+      vipUntil: user.role === "admin" ? null : user.vipUntil ?? null,
+      createdAt: user.createdAt
+    };
+  });
 }
 
 export async function requireAuth(request: AuthenticatedRequest, response: Response, next: NextFunction) {

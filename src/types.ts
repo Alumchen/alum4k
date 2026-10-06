@@ -18,6 +18,7 @@ export interface DownloadResource {
   code?: string;
   size?: string;
   note?: string;
+  access?: "free" | "vip";
 }
 
 export interface ResourceCheckResult {
@@ -93,14 +94,4 @@ export interface AuthState {
   user: User;
 }
 
-export interface Announcement {
-  enabled: boolean;
-  title: string;
-  content: string;
-  frequency: "session" | "daily" | "always";
-  revision: string;
-}
-
-export interface SiteSettings {
-  announcement: Announcement;
-}
+export type { Announcement, SiteSettings } from "../shared/site";

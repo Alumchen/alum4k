@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import net from "node:net";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 export const adminPassword = "test-admin-password";
@@ -36,7 +36,7 @@ export async function startTestApi() {
   };
   await writeFile(path.join(directory, "data", "library.json"), JSON.stringify([movie, { ...movie, id: "empty", title: "暂无资源", tmdbId: 789012, source: undefined, resources: [], episodes: [] }]));
   const port = await freePort();
-  const child = spawn(process.execPath, [path.join(projectRoot, "node_modules/tsx/dist/cli.mjs"), path.join(projectRoot, "server/index.ts")], {
+  const child = spawn(process.execPath, ["--import", pathToFileURL(path.join(projectRoot, "node_modules/tsx/dist/loader.mjs")).href, path.join(projectRoot, "server/index.ts")], {
     cwd: directory,
     env: { ...process.env, API_PORT: String(port), ADMIN_PASSWORD: adminPassword, AUTH_SECRET: "isolated-test-secret", TMDB_BEARER_TOKEN: "", TMDB_API_KEY: "", ALIST_BASE_URL: "", ALIST_TOKEN: "" },
     windowsHide: true, stdio: ["ignore", "pipe", "pipe"]
@@ -50,7 +50,8 @@ export async function startTestApi() {
       const ended = new Promise<void>((resolve) => child.once("exit", () => resolve()));
       child.kill(); await ended;
     }
-    await rm(directory, { recursive: true, force: true });
+    if (!path.resolve(directory).startsWith(path.resolve(tmpdir()) + path.sep + "alum4k-test-")) throw new Error("Unexpected test directory; refusing cleanup.");
+    await rm(directory, { recursive: true, force: true, maxRetries: 5, retryDelay: 150 });
   }
   for (let attempt = 0; attempt < 150; attempt++) {
     if (child.exitCode !== null) { await close(); throw new Error(logs); }

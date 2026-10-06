@@ -24,3 +24,12 @@ export function isDownloadUrl(type: "115" | "magnet", value: string) {
     return false;
   }
 }
+
+export function extractDownloadLink(type: "115" | "magnet", input: string) {
+  const text = input.trim();
+  const candidates = text.match(type === "115" ? /https?:\/\/[^\s<>"|，。]+/gi : /magnet:\?[^\s<>"|，。]+/gi) ?? [];
+  const urls = [...new Set(candidates.map((candidate) => candidate.replace(/[)）\]】；;]+$/g, "")).filter((url) => isDownloadUrl(type, url)))];
+  if (urls.length !== 1) throw new Error(urls.length ? "每个输入框请只粘贴一条链接。" : "未找到有效链接，请检查粘贴内容。");
+  const code = type === "115" ? text.match(/(?:提取码|访问码|访问密码)\s*[:：]?\s*([a-z0-9]{4,12})/i)?.[1] : undefined;
+  return { url: urls[0], code };
+}

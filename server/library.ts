@@ -54,7 +54,8 @@ function normalizeResources(input: Partial<MediaItem>): DownloadResource[] {
       url,
       code: cleanText(resource.code),
       size: cleanText(resource.size),
-      note: cleanText(resource.note)
+      note: cleanText(resource.note),
+      access: resource.access === "free" || resource.access === "vip" ? resource.access : input.access === "免费" ? "free" : "vip"
     }];
   });
 }

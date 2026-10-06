@@ -4,18 +4,20 @@ import {
   Save, Search, ShieldCheck, Sparkles, Trash2, Upload, Users, X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { batchMedia, collectTmdb, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip } from "./api";
-import { classifyMedia, isDownloadUrl, mediaCategories } from "../shared/media";
+import { batchMedia, collectTmdb, createAdmin, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip } from "./api";
+import { classifyMedia, mediaCategories } from "../shared/media";
+import { defaultSettings, themes } from "../shared/site";
+import { BrandMark, useSite } from "./SiteContext";
+import ResourceEditor, { cleanResources } from "./ResourceEditor";
 import AnnouncementDialog from "./AnnouncementDialog";
 import Dialog from "./Dialog";
-import type { DownloadResource, MediaItem, SiteSettings, User } from "./types";
+import type { MediaItem, SiteSettings, User } from "./types";
 
 const blank: MediaItem = {
   id: "", mediaType: "movie", title: "", originalTitle: "", category: "电影", categoryMode: "auto",
   region: "其他", access: "会员", status: "待补资源", genres: [], cast: [], overview: "",
   posterPath: "", backdropPath: "", resources: [], episodes: [], featured: false
 };
-const defaultSettings: SiteSettings = { announcement: { enabled: false, title: "站点公告", content: "", frequency: "session", revision: "initial" } };
 type View = "library" | "collect" | "users" | "settings";
 const sections = [
   { key: "library" as const, label: "媒体库", icon: Database },
@@ -26,32 +28,6 @@ const sections = [
 const pageSize = 12;
 
 function splitList(value: string) { return value.split(/[,，\n]/).map((entry) => entry.trim()).filter(Boolean); }
-function resourceText(resources: DownloadResource[] | undefined, type: "115" | "magnet") {
-  return (resources ?? []).filter((resource) => resource.type === type).map((resource) =>
-    (type === "115" ? [resource.url, resource.code ?? "", resource.size ?? "", resource.note ?? ""] : [resource.url, resource.size ?? "", resource.note ?? ""])
-      .join(" | ").replace(/( \| )+$/g, "")
-  ).join("\n");
-}
-function parseResources(pan: string, magnet: string, existing: DownloadResource[] = []) {
-  const resources: DownloadResource[] = [];
-  const seen = new Set<string>();
-  for (const [type, value] of [["115", pan], ["magnet", magnet]] as const) {
-    const lines = value.split("\n").map((line) => line.trim()).filter(Boolean);
-    for (const [index, line] of lines.entries()) {
-      const [url, second, third, fourth] = line.split("|").map((part) => part.trim());
-      if (!isDownloadUrl(type, url)) throw new Error(`${type === "115" ? "115网盘" : "磁力链接"}第 ${index + 1} 行格式不正确。`);
-      if (seen.has(type + url)) continue;
-      seen.add(type + url);
-      const previous = existing.find((resource) => resource.type === type && resource.url === url);
-      resources.push({
-        id: previous?.id ?? `${type}-${Date.now()}-${index + 1}`, type,
-        title: previous?.title ?? (type === "115" ? "115网盘" : "磁力链接"),
-        url, code: type === "115" ? second : undefined, size: type === "115" ? third : second, note: type === "115" ? fourth : third
-      });
-    }
-  }
-  return resources;
-}
 function dateText(value?: string | null) {
   if (!value) return "";
   const date = new Date(value);
@@ -67,13 +43,12 @@ function vipText(user: User) {
 export default function AdminPanel({ library, currentUser, onLibraryChange, onLogout }: {
   library: MediaItem[]; currentUser: User; onLibraryChange: () => Promise<void>; onLogout: () => void;
 }) {
+  const { settings: publishedSettings, setSettings: publishSettings } = useSite();
   const [view, setView] = useState<View>("library");
   const [draft, setDraft] = useState<MediaItem>({ ...blank });
   const [genres, setGenres] = useState("");
   const [cast, setCast] = useState("");
-  const [pan, setPan] = useState("");
-  const [magnet, setMagnet] = useState("");
-  const [baseline, setBaseline] = useState(JSON.stringify([blank, "", "", "", ""]));
+  const [baseline, setBaseline] = useState(JSON.stringify([blank, "", ""]));
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("全部");
   const [resourceFilter, setResourceFilter] = useState("全部");
@@ -89,12 +64,18 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
   const [settingsBaseline, setSettingsBaseline] = useState(JSON.stringify(defaultSettings));
   const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminName, setAdminName] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
+  const [adminConfirm, setAdminConfirm] = useState("");
+  const [adminError, setAdminError] = useState("");
+  const logoInput = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [confirmation, setConfirmation] = useState<{ title: string; text: string; run: () => Promise<void> } | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const dirty = JSON.stringify([draft, genres, cast, pan, magnet]) !== baseline;
+  const dirty = JSON.stringify([draft, genres, cast]) !== baseline;
   const settingsDirty = JSON.stringify(settings) !== settingsBaseline;
 
   function report(error: unknown) { setNotice({ text: error instanceof Error ? error.message : "操作失败，请重试。", error: true }); }
@@ -128,7 +109,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   const currentPage = Math.min(page, pages);
   const pageItems = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const filteredUsers = users.filter((user) => user.username.includes(userQuery.trim().toLowerCase()) &&
-    (userFilter === "全部" || (userFilter === "VIP" ? user.role !== "admin" && user.vip : userFilter === "已到期" ? !user.vip && Boolean(user.vipUntil) : user.role !== "admin" && !user.vip)));
+    (userFilter === "全部" || (userFilter === "管理员" ? user.role === "admin" : userFilter === "VIP" ? user.role !== "admin" && user.vip : userFilter === "已到期" ? !user.vip && Boolean(user.vipUntil) : user.role !== "admin" && !user.vip)));
   const autoCategory = classifyMedia({ mediaType: draft.mediaType, genres: splitList(genres) });
 
   function navigate(next: View) {
@@ -144,9 +125,8 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   function applyDraft(item: MediaItem) {
     const next: MediaItem = { ...blank, ...item, categoryMode: item.categoryMode ?? (item.id ? "manual" : "auto"), resources: item.resources ?? [] };
     const genreText = next.genres.join("，"), castText = next.cast.join("，");
-    const panText = resourceText(next.resources, "115"), magnetText = resourceText(next.resources, "magnet");
-    setDraft(next); setGenres(genreText); setCast(castText); setPan(panText); setMagnet(magnetText);
-    setBaseline(JSON.stringify([next, genreText, castText, panText, magnetText])); setView("collect");
+    setDraft(next); setGenres(genreText); setCast(castText);
+    setBaseline(JSON.stringify([next, genreText, castText])); setView("collect");
   }
   function openDraft(item: MediaItem) {
     if (dirty && view === "collect" && !window.confirm("当前修改尚未保存，确认切换条目？")) return;
@@ -174,7 +154,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   function save(mode: "save" | "collect") {
     run(async () => {
       const payload = { ...draft, genres: splitList(genres), cast: splitList(cast), category: draft.categoryMode === "auto" ? autoCategory : draft.category,
-        resources: parseResources(pan, magnet, draft.resources) };
+        resources: cleanResources(draft.resources) };
       if (!payload.title.trim()) throw new Error("请填写影视标题。");
       const item = mode === "collect" && payload.tmdbId ? await collectTmdb(payload) : await saveMedia(payload, payload.id || undefined);
       applyDraft(item); await onLibraryChange(); setNotice({ text: `已保存《${item.title}》。`, error: false });
@@ -212,14 +192,41 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
     updateVip(user, true, dateText(date.toISOString()));
   }
 
+  async function readLogo(file?: File) {
+    if (!file) return;
+    try {
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 1024 * 1024) throw new Error("请选择 1 MB 以内的 PNG、JPEG 或 WebP 图片。");
+      const bitmap = await createImageBitmap(file);
+      const valid = bitmap.width > 0 && bitmap.height > 0 && bitmap.width <= 4096 && bitmap.height <= 4096;
+      bitmap.close();
+      if (!valid) throw new Error("Logo 图片长宽不能超过 4096 像素。");
+      const logo = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error("图片读取失败。")); reader.readAsDataURL(file); });
+      setSettings((current) => ({ ...current, branding: { ...current.branding, logo } }));
+    } catch (error) { report(error); }
+    if (logoInput.current) logoInput.current.value = "";
+  }
+
+  async function addAdmin(event: FormEvent) {
+    event.preventDefault();
+    if (busy) return;
+    if (adminPassword !== adminConfirm) { setAdminError("两次密码输入不一致。"); return; }
+    setBusy(true); setAdminError("");
+    try {
+      const user = await createAdmin(adminName, adminPassword);
+      await loadUsers(); setAdminOpen(false); setAdminPassword(""); setAdminConfirm(""); setAdminName("");
+      setNotice({ text: `管理员 ${user.username} 已添加。`, error: false });
+    } catch (error) { setAdminError(error instanceof Error ? error.message : "管理员添加失败。"); }
+    finally { setBusy(false); }
+  }
+
   return <div className="admin-workspace">
     <aside className="admin-sidebar">
-      <a className="admin-brand" href="/"><span className="brand-mark"><Film size={16} /></span><strong>Alum4K</strong><small>管理后台</small></a>
+      <a className="admin-brand" href="/"><BrandMark /><strong>{publishedSettings.branding.name}</strong><small>管理后台</small></a>
       <nav aria-label="后台导航">{sections.map(({ key, label, icon: Icon }) => <button key={key} type="button" className={view === key ? "active" : ""} onClick={() => navigate(key)} disabled={busy}><Icon size={18} />{label}</button>)}</nav>
       <div className="admin-sidebar-bottom"><a href="/"><ArrowLeft size={16} />返回网站</a><button type="button" onClick={logout}><LogOut size={16} />退出登录</button></div>
     </aside>
     <main className="admin-main">
-      <header className="admin-page-head"><div><span>Alum4K / 管理后台</span><h1>{sections.find((section) => section.key === view)?.label}</h1></div>
+      <header className="admin-page-head"><div><span>{publishedSettings.branding.name} / 管理后台</span><h1>{sections.find((section) => section.key === view)?.label}</h1></div>
         <div className="admin-head-actions"><span className="admin-account"><ShieldCheck size={16} />{currentUser.username}</span><button className="admin-icon-button" type="button" title="刷新数据" disabled={busy} onClick={() => run(async () => { await onLibraryChange(); await loadUsers(); if (!settingsDirty) await loadSiteSettings(); setNotice({ text: "数据已刷新。", error: false }); })}><RefreshCcw size={17} /></button><button className="admin-icon-button" type="button" title="退出登录" disabled={busy} onClick={logout}><LogOut size={17} /></button></div>
       </header>
       <div className="admin-summary"><div><strong>{library.length}</strong><span>影视条目</span></div><div><strong>{library.filter((item) => item.resources?.length).length}</strong><span>已有资源</span></div><div><strong>{users.filter((user) => user.role !== "admin").length}</strong><span>注册用户</span></div><div><strong>{users.filter((user) => user.role !== "admin" && user.vip).length}</strong><span>有效 VIP</span></div></div>
@@ -274,6 +281,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
             <label>年份<input type="number" min="1880" max="2200" value={draft.year ?? ""} onChange={(event) => setDraft({ ...draft, year: Number(event.target.value) || undefined })} /></label>
             <label>评分<input type="number" min="0" max="10" step="0.1" value={draft.rating ?? ""} onChange={(event) => setDraft({ ...draft, rating: Number(event.target.value) || undefined })} /></label>
             <label>状态<input value={draft.status} onChange={(event) => setDraft({ ...draft, status: event.target.value })} /></label>
+            <label>默认链接权限<select value={draft.access === "免费" ? "免费" : "VIP"} onChange={(event) => setDraft({ ...draft, access: event.target.value as MediaItem["access"] })}><option value="VIP">VIP 查看</option><option value="免费">免费查看</option></select></label>
             <label>类型标签<input value={genres} onChange={(event) => setGenres(event.target.value)} placeholder="剧情，动画，纪录" /></label>
             <label>主演<input value={cast} onChange={(event) => setCast(event.target.value)} /></label>
             <label>海报地址<input value={draft.posterPath ?? ""} onChange={(event) => setDraft({ ...draft, posterPath: event.target.value })} /></label>
@@ -281,37 +289,44 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           </div>
           <label className="admin-wide-field">简介<textarea value={draft.overview} rows={5} onChange={(event) => setDraft({ ...draft, overview: event.target.value })} /></label>
           <h3 className="editor-resource-heading"><Download size={17} />下载资源</h3>
-          <div className="download-editor-grid">
-            <label className="admin-wide-field">115 网盘链接<textarea aria-label="115 网盘链接" value={pan} onChange={(event) => setPan(event.target.value)} rows={5} placeholder="https://115.com/s/分享码 | 提取码 | 大小 | 备注" /></label>
-            <label className="admin-wide-field">磁力链接<textarea aria-label="磁力链接" value={magnet} onChange={(event) => setMagnet(event.target.value)} rows={5} placeholder="magnet:?xt=urn:btih:完整哈希 | 大小 | 备注" /></label>
-          </div></fieldset>
+          <ResourceEditor resources={draft.resources ?? []} defaultAccess={draft.access === "免费" ? "free" : "vip"} onChange={(resources) => setDraft({ ...draft, resources })} /></fieldset>
           <div className="editor-footer"><span>{dirty ? "有未保存的修改" : draft.id ? "已保存" : ""}</span><button className="primary-action" type="submit" disabled={busy}><Save size={16} />{busy ? "处理中…" : "保存影视"}</button><button type="button" disabled={busy || !draft.tmdbId} onClick={() => save("collect")}><RefreshCcw size={16} />更新 TMDB 并保存</button></div>
         </form>
       </div> : null}
 
       {view === "users" ? <section>
         <div className="admin-toolbar"><label className="admin-search-field"><Search size={17} /><input value={userQuery} onChange={(event) => setUserQuery(event.target.value)} placeholder="搜索用户名" aria-label="搜索用户名" /></label>
-          <select value={userFilter} aria-label="会员筛选" onChange={(event) => setUserFilter(event.target.value)}>{["全部", "VIP", "普通用户", "已到期"].map((filter) => <option key={filter}>{filter}</option>)}</select><span className="muted">{filteredUsers.length} 位用户</span></div>
+          <select value={userFilter} aria-label="会员筛选" onChange={(event) => setUserFilter(event.target.value)}>{["全部", "管理员", "VIP", "普通用户", "已到期"].map((filter) => <option key={filter}>{filter}</option>)}</select><span className="muted">{filteredUsers.length} 位用户</span><div className="toolbar-spacer" /><button className="primary-action" type="button" disabled={busy} onClick={() => { setAdminError(""); setAdminName(""); setAdminPassword(""); setAdminConfirm(""); setAdminOpen(true); }}><Plus size={16} />添加管理员</button></div>
         <div className="admin-user-list">{filteredUsers.map((user) => <div className="admin-user-row" key={user.username}><div className="admin-user-summary"><strong>{user.username}</strong><span className={user.vip ? "user-status vip" : "user-status"}>{vipText(user)}</span><small>注册于 {dateText(user.createdAt) || "—"}</small></div>
-          {user.role === "admin" ? <span className="muted">内置管理员</span> : <div className="vip-controls">
+          {user.role === "admin" ? <span className="muted">{user.username === "admin" ? "内置管理员" : "管理员账号"}</span> : <div className="vip-controls">
             <button type="button" disabled={busy} onClick={() => extendVip(user, 30)}>+30天</button><button type="button" disabled={busy} onClick={() => extendVip(user, 90)}>+90天</button><button type="button" disabled={busy} onClick={() => extendVip(user, 365)}>+1年</button><button type="button" disabled={busy} onClick={() => updateVip(user, true, null)}>永久</button>
             <input type="date" aria-label={`${user.username} VIP 到期日`} value={vipDates[user.username] ?? ""} onChange={(event) => setVipDates((dates) => ({ ...dates, [user.username]: event.target.value }))} />
             <button type="button" disabled={busy || !vipDates[user.username]} onClick={() => updateVip(user, true, vipDates[user.username])}>设置到期日</button><button className="danger-action" type="button" disabled={busy || !user.vip} onClick={() => updateVip(user, false, null)}>取消 VIP</button>
           </div>}</div>)}</div>{!filteredUsers.length ? <div className="admin-empty"><Users size={28} />没有匹配的用户</div> : null}
       </section> : null}
 
-      {view === "settings" ? <form className="admin-settings-form" onSubmit={(event) => { event.preventDefault(); run(async () => { const next = await saveSettings(settings); setSettings(next); setSettingsBaseline(JSON.stringify(next)); setNotice({ text: "公告已保存，前台刷新后生效。", error: false }); }); }}>
-        <h2><Bell size={18} />首页公告</h2>
+      {view === "settings" ? <form className="admin-settings-form" onSubmit={(event) => { event.preventDefault(); run(async () => { const next = await saveSettings(settings); setSettings(next); publishSettings(next); setSettingsBaseline(JSON.stringify(next)); setNotice({ text: "站点设置已保存，前台刷新后生效。", error: false }); }); }}>
         <fieldset disabled={busy || !settingsLoaded}>
-          <label className="switch-field"><input type="checkbox" checked={settings.announcement.enabled} onChange={(event) => setSettings({ announcement: { ...settings.announcement, enabled: event.target.checked } })} /><span>启用首页弹窗</span></label>
-          <label className="admin-wide-field">公告标题<input maxLength={80} value={settings.announcement.title} required onChange={(event) => setSettings({ announcement: { ...settings.announcement, title: event.target.value } })} /></label>
-          <label className="admin-wide-field">公告正文<textarea aria-label="公告正文" rows={9} maxLength={3000} value={settings.announcement.content} required={settings.announcement.enabled} onChange={(event) => setSettings({ announcement: { ...settings.announcement, content: event.target.value } })} /><small className="muted">{settings.announcement.content.length} / 3000</small></label>
-          <label className="admin-wide-field">显示频率<select value={settings.announcement.frequency} onChange={(event) => setSettings({ announcement: { ...settings.announcement, frequency: event.target.value as SiteSettings["announcement"]["frequency"] } })}><option value="session">每次浏览会话一次</option><option value="daily">每天一次</option><option value="always">每次打开首页</option></select></label>
+          <h2><Image size={18} />网站外观</h2>
+          <label className="admin-wide-field">网站名称<input maxLength={24} value={settings.branding.name} required onChange={(event) => setSettings({ ...settings, branding: { ...settings.branding, name: event.target.value } })} /></label>
+          <div className="branding-controls"><div className="logo-preview">{settings.branding.logo ? <img src={settings.branding.logo} alt="Logo 预览" /> : <Film size={26} />}</div><div><button type="button" onClick={() => logoInput.current?.click()}><Upload size={16} />上传 Logo</button><button type="button" disabled={!settings.branding.logo} onClick={() => setSettings({ ...settings, branding: { ...settings.branding, logo: "" } })}><Trash2 size={16} />移除 Logo</button></div><input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="上传网站 Logo" hidden onChange={(event) => readLogo(event.target.files?.[0])} /></div>
+          <div className="theme-picker" role="radiogroup" aria-label="网站背景主题">{themes.map((theme) => <label key={theme.value} className={settings.branding.theme === theme.value ? "selected" : ""}><span className="theme-swatch" style={{ background: theme.background }}><span style={{ background: theme.surface }} /></span><span>{theme.label}</span><input type="radio" name="site-theme" value={theme.value} checked={settings.branding.theme === theme.value} onChange={() => setSettings({ ...settings, branding: { ...settings.branding, theme: theme.value } })} /></label>)}</div>
+          <h2 className="settings-section-heading"><Bell size={18} />首页公告</h2>
+          <label className="switch-field"><input type="checkbox" checked={settings.announcement.enabled} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, enabled: event.target.checked } })} /><span>启用首页弹窗</span></label>
+          <label className="admin-wide-field">公告标题<input maxLength={80} value={settings.announcement.title} required onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, title: event.target.value } })} /></label>
+          <label className="admin-wide-field">公告正文<textarea aria-label="公告正文" rows={9} maxLength={3000} value={settings.announcement.content} required={settings.announcement.enabled} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, content: event.target.value } })} /><small className="muted">{settings.announcement.content.length} / 3000</small></label>
+          <label className="admin-wide-field">显示频率<select value={settings.announcement.frequency} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, frequency: event.target.value as SiteSettings["announcement"]["frequency"] } })}><option value="session">每次浏览会话一次</option><option value="daily">每天一次</option><option value="always">每次打开首页</option></select></label>
         </fieldset>
-        <div className="editor-footer"><span>{settingsDirty ? "有未保存的修改" : ""}</span><button type="button" disabled={!settingsLoaded || !settings.announcement.content.trim()} onClick={() => setPreview(true)}><Image size={16} />预览</button><button className="primary-action" type="submit" disabled={busy || !settingsLoaded}><Save size={16} />保存公告</button></div>
+        <div className="editor-footer"><span>{settingsDirty ? "有未保存的修改" : ""}</span><button type="button" disabled={!settingsLoaded || !settings.announcement.content.trim()} onClick={() => setPreview(true)}><Image size={16} />预览</button><button className="primary-action" type="submit" disabled={busy || !settingsLoaded}><Save size={16} />保存站点设置</button></div>
       </form> : null}
     </main>
     {preview ? <AnnouncementDialog announcement={settings.announcement} onClose={() => setPreview(false)} /> : null}
+    {adminOpen ? <Dialog title="添加管理员" onClose={() => { if (!busy) { setAdminOpen(false); setAdminPassword(""); setAdminConfirm(""); } }}><form className="auth-fields" onSubmit={addAdmin}>
+      <label>管理员用户名<input required minLength={3} maxLength={20} value={adminName} autoComplete="off" onChange={(event) => setAdminName(event.target.value)} disabled={busy} /></label>
+      <label>管理员密码<input required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} disabled={busy} /></label>
+      <label>确认管理员密码<input required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={adminConfirm} onChange={(event) => setAdminConfirm(event.target.value)} disabled={busy} /></label>
+      {adminError ? <p className="form-error" role="alert">{adminError}</p> : null}<button type="submit" className="primary-action" disabled={busy}><ShieldCheck size={17} />{busy ? "正在创建…" : "创建管理员"}</button>
+    </form></Dialog> : null}
     {confirmation ? <Dialog title={confirmation.title} onClose={() => { if (!busy) setConfirmation(null); }}><p>{confirmation.text}</p><div className="dialog-actions"><button type="button" disabled={busy} onClick={() => setConfirmation(null)}>取消</button><button className="danger-action" type="button" disabled={busy} onClick={() => run(async () => { await confirmation.run(); setConfirmation(null); })}><Trash2 size={16} />{busy ? "处理中…" : "确认删除"}</button></div></Dialog> : null}
   </div>;
 }

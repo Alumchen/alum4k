@@ -3,8 +3,10 @@ import { useEffect, useState, type FormEvent } from "react";
 import { fetchCurrentUser, fetchMedia, login, setAuthToken } from "./api";
 import AdminPanel from "./AdminPanel";
 import type { MediaItem, User } from "./types";
+import { BrandMark, useSite } from "./SiteContext";
 
 export default function AdminApp() {
+  const { settings } = useSite();
   const [user, setUser] = useState<User | null>(null);
   const [library, setLibrary] = useState<MediaItem[]>([]);
   const [checking, setChecking] = useState(true);
@@ -41,7 +43,7 @@ export default function AdminApp() {
     return <AdminPanel library={library} currentUser={user} onLibraryChange={refreshLibrary} onLogout={logout} />;
   }
   return <main className="admin-login-page">
-    <a className="admin-login-brand" href="/"><span className="brand-mark"><Film size={16} /></span>Alum4K</a>
+    <a className="admin-login-brand" href="/"><BrandMark /><span>{settings.branding.name}</span></a>
     <form className="admin-login-form auth-fields" onSubmit={submit}>
       <LockKeyhole size={28} className="admin-login-icon" /><h1>管理员登录</h1>
       <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import express from "express";
 import {
-  ensureAdminUser, listUsers, loginUser, registerUser, requireAuth, requireAdmin,
+  ensureAdminUser, listUsers, loginUser, registerUser, createAdminUser, requireAuth, requireAdmin,
   setUserVip, userFromRequest, type AuthenticatedRequest
 } from "./auth";
 import { batchMedia, deleteMedia, findMedia, importLibrary, loadLibrary, upsertMedia } from "./library";
@@ -38,7 +38,11 @@ async function visibleMedia(request: express.Request, items: MediaItem[]) {
   if (user?.vip || user?.role === "admin") return items;
   return items.map((item) => ({
     ...item,
-    resources: item.resources?.map(({ code: _code, url: _url, ...resource }) => ({ ...resource, url: "" }))
+    resources: item.resources?.map((resource) => {
+      if (resource.access === "free") return resource;
+      const { code: _code, url: _url, ...metadata } = resource;
+      return { ...metadata, url: "" };
+    })
   }));
 }
 
@@ -50,6 +54,7 @@ function validateResources(input: Partial<MediaItem>) {
   if (!Array.isArray(input.resources)) return;
   if (input.resources.length > 500) throw new Error("每个条目最多保存 500 个下载链接。");
   for (const resource of input.resources) {
+    if (resource?.access !== undefined && !["free", "vip"].includes(resource.access)) throw new Error("链接权限应为免费或 VIP。");
     if (!resource || !["115", "magnet"].includes(resource.type) || !isDownloadUrl(resource.type, String(resource.url ?? ""))) {
       throw new Error("请填写有效的 115 网盘链接或磁力链接，AList 路径已停用。");
     }
@@ -83,6 +88,12 @@ app.get("/api/auth/me", requireAuth, (request: AuthenticatedRequest, response) =
 
 app.get("/api/admin/users", requireAdmin, async (_request, response, next) => {
   try { response.json({ users: await listUsers() }); } catch (error) { next(error); }
+});
+
+app.post("/api/admin/users", requireAdmin, async (request, response) => {
+  try {
+    response.status(201).json({ user: await createAdminUser(String(request.body?.username ?? ""), String(request.body?.password ?? "")) });
+  } catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "管理员创建失败。" }); }
 });
 
 app.put("/api/admin/users/:username/vip", requireAdmin, async (request, response, next) => {

@@ -18,6 +18,10 @@ async function checkOverflow(page: Page, label: string) {
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
   assert.equal(overflow, false, `${label}: page overflows the viewport`);
 }
+async function capture(page: Page, filename: string) {
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: path.join(output, filename), fullPage: true });
+}
 try {
   await mkdir(output, { recursive: true });
   for (let attempt = 0; attempt < 100; attempt++) {
@@ -35,7 +39,7 @@ try {
   assert.equal(await page.locator(".nav-item").filter({ hasText: "VIP会员" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "后台管理" }).count(), 0);
   assert.equal(await page.locator("video").count(), 0);
-  await page.screenshot({ path: path.join(output, "home-desktop.png"), fullPage: true });
+  await capture(page, "home-desktop.png");
   await page.locator(".media-card").filter({ hasText: "验证电影" }).click();
   assert.equal(await page.getByRole("tab").count(), 2);
   assert.equal(await page.locator(".resource-url-line").count(), 0);
@@ -47,7 +51,7 @@ try {
   await page.getByRole("heading", { name: "媒体库", exact: true }).waitFor();
   await page.locator(".admin-table tbody tr").first().waitFor();
   await checkOverflow(page, "admin desktop");
-  await page.screenshot({ path: path.join(output, "admin-desktop.png"), fullPage: true });
+  await capture(page, "admin-desktop.png");
   await page.getByRole("button", { name: "编辑验证电影", exact: true }).click();
   await page.getByRole("heading", { name: "编辑影视", exact: true }).waitFor();
   assert.equal(await page.getByLabel("115 网盘链接", { exact: true }).count(), 1);
@@ -65,11 +69,11 @@ try {
   await page.getByRole("dialog").waitFor();
   assert.equal(await page.locator(".announcement-content script").count(), 0);
   await page.getByRole("button", { name: "我知道了" }).click();
-  await page.getByRole("button", { name: "保存公告", exact: true }).click();
-  await page.getByRole("status").filter({ hasText: "公告已保存" }).waitFor();
+  await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "站点设置已保存" }).waitFor();
   await page.goto(base);
   await page.getByRole("dialog").waitFor();
-  await page.screenshot({ path: path.join(output, "announcement-desktop.png") });
+  await capture(page, "announcement-desktop.png");
   await page.getByRole("button", { name: "我知道了" }).click();
   await page.reload();
   await page.locator(".media-card").first().waitFor();
@@ -82,24 +86,92 @@ try {
   await page.getByRole("button", { name: "复制链接", exact: true }).click();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), magnetUrl);
   assert.equal(await page.locator("video").count(), 0);
-  await page.screenshot({ path: path.join(output, "detail-desktop.png"), fullPage: true });
+  await capture(page, "detail-desktop.png");
   await page.setViewportSize({ width: 390, height: 844 });
   await checkOverflow(page, "detail mobile");
-  await page.screenshot({ path: path.join(output, "detail-mobile.png"), fullPage: true });
+  await capture(page, "detail-mobile.png");
   await page.goto(base + "/admin");
   await page.getByRole("heading", { name: "媒体库", exact: true }).waitFor();
   await checkOverflow(page, "admin mobile");
-  await page.screenshot({ path: path.join(output, "admin-mobile.png"), fullPage: true });
+  await capture(page, "admin-mobile.png");
   await page.getByRole("button", { name: "影视采集", exact: true }).click();
   await checkOverflow(page, "editor mobile");
-  await page.screenshot({ path: path.join(output, "editor-mobile.png"), fullPage: true });
+  await capture(page, "editor-mobile.png");
   await page.getByRole("button", { name: "用户 / VIP", exact: true }).click();
   await checkOverflow(page, "users mobile");
   await page.getByRole("button", { name: "站点设置", exact: true }).click();
   await checkOverflow(page, "settings mobile");
-  await page.screenshot({ path: path.join(output, "settings-mobile.png"), fullPage: true });
+  await capture(page, "settings-mobile.png");
+  const logo = await page.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 64; canvas.height = 64;
+    const painter = canvas.getContext("2d")!;
+    painter.fillStyle = "#197d75"; painter.fillRect(0, 0, 64, 64);
+    painter.fillStyle = "#ffffff"; painter.font = "bold 44px sans-serif"; painter.fillText("A", 16, 48);
+    return canvas.toDataURL("image/png");
+  });
+  await page.getByLabel("网站名称", { exact: true }).fill("Alum 4K 影视");
+  await page.getByLabel("上传网站 Logo", { exact: true }).setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: Buffer.from(logo.split(",")[1], "base64") });
+  await page.locator(".logo-preview img").waitFor();
+  await page.getByRole("radio", { name: "浅色", exact: true }).check();
+  await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "站点设置已保存" }).waitFor();
+  await page.waitForFunction(() => document.title === "Alum 4K 影视" && document.documentElement.dataset.theme === "light");
+  assert.equal(await page.locator('link[rel="icon"]').getAttribute("href"), logo);
+  assert.equal(await page.locator(".brand-logo").evaluate((image) => (image as HTMLImageElement).naturalWidth), 64);
+  await checkOverflow(page, "light settings mobile");
+  await capture(page, "settings-light-mobile.png");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await capture(page, "settings-light-desktop.png");
+  await page.getByRole("button", { name: "媒体库", exact: true }).click();
+  await page.getByRole("button", { name: "编辑验证电影", exact: true }).click();
+  await page.getByLabel("115 网盘链接", { exact: true }).fill(`电影分享：${panUrl} 提取码：newcode`);
+  await page.getByLabel("115 网盘链接1查看权限", { exact: true }).selectOption("free");
+  await page.getByLabel("磁力链接1查看权限", { exact: true }).selectOption("vip");
+  await page.getByRole("button", { name: "保存影视", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
+  assert.equal(await page.getByLabel("115 网盘链接", { exact: true }).inputValue(), panUrl);
+  assert.equal(await page.getByLabel("115 网盘链接1提取码", { exact: true }).inputValue(), "newcode");
+  await capture(page, "editor-light-desktop.png");
+  await page.getByRole("button", { name: "用户 / VIP", exact: true }).click();
+  await page.getByRole("button", { name: "添加管理员", exact: true }).click();
+  await page.getByLabel("管理员用户名", { exact: true }).fill("ui_admin");
+  await page.getByLabel("管理员密码", { exact: true }).fill("ui-admin-password");
+  await page.getByLabel("确认管理员密码", { exact: true }).fill("ui-admin-password");
+  await page.getByRole("button", { name: "创建管理员", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "ui_admin 已添加" }).waitFor();
+  assert.equal(await page.locator(".admin-user-row").filter({ hasText: "ui_admin" }).count(), 1);
+  const guestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const guest = await guestContext.newPage();
+  guest.on("pageerror", (error) => errors.push(error.message));
+  await guest.goto(base);
+  await guest.getByRole("button", { name: "我知道了" }).click();
+  await guest.waitForFunction(() => document.title === "Alum 4K 影视" && document.documentElement.dataset.theme === "light");
+  await capture(guest, "home-light-mobile.png");
+  await guest.locator(".media-card").filter({ hasText: "验证电影" }).click();
+  await guest.getByRole("button", { name: "复制链接", exact: true }).waitFor();
+  assert.equal(await guest.locator(".resource-url-line a").getAttribute("href"), panUrl);
+  await checkOverflow(guest, "free download mobile");
+  await capture(guest, "detail-light-mobile.png");
+  await guest.getByRole("tab", { name: /磁力链接/ }).click();
+  assert.equal(await guest.locator(".resource-url-line").count(), 0);
+  assert.equal(await guest.locator(".locked-resource").count(), 1);
+  await guest.goto(base + "/admin");
+  await guest.getByLabel("用户名", { exact: true }).fill("ui_admin");
+  await guest.getByLabel("密码", { exact: true }).fill("ui-admin-password");
+  await guest.getByRole("button", { name: "登录后台", exact: true }).click();
+  await guest.getByRole("heading", { name: "媒体库", exact: true }).waitFor();
+  await guestContext.close();
+  await page.getByRole("button", { name: "站点设置", exact: true }).click();
+  for (const [name, theme] of [["深色", "dark"], ["石墨灰", "graphite"], ["森林绿", "forest"]]) {
+    await page.getByRole("radio", { name, exact: true }).check();
+    await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
+    await page.getByRole("status").filter({ hasText: "站点设置已保存" }).waitFor();
+    await page.waitForFunction((expected) => document.documentElement.dataset.theme === expected, theme);
+    await checkOverflow(page, `${theme} desktop`);
+    await capture(page, `settings-${theme}-desktop.png`);
+  }
   assert.deepEqual(errors, []);
-  console.log("UI checks passed: admin login, resource tabs/copy, classification, announcement, desktop/mobile layout.");
+  console.log("UI checks passed: resource paste/permissions/copy, admin creation/login, branding/favicon/logo, all four themes, announcements, desktop/mobile layout.");
   console.log(`Screenshots: ${output}`);
 } finally {
   await browser?.close();

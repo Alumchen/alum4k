@@ -19,6 +19,7 @@ export interface DownloadResource {
   code?: string;
   size?: string;
   note?: string;
+  access?: "free" | "vip";
 }
 
 export interface Episode {

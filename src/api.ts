@@ -125,6 +125,11 @@ export async function setUserVip(username: string, vip: boolean, vipUntil?: stri
   return payload.user;
 }
 
+export async function createAdmin(username: string, password: string) {
+  const payload = await writeJson<{ user: User }>("/api/admin/users", "POST", { username, password });
+  return payload.user;
+}
+
 export function fetchSettings() {
   return readJson<SiteSettings>("/api/settings");
 }

@@ -26,6 +26,7 @@ import {
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { fetchCurrentUser, fetchMedia, fetchSettings, login, register, setAuthToken } from "./api";
 import { copyText } from "./clipboard";
+import { BrandMark, useSite } from "./SiteContext";
 import Dialog from "./Dialog";
 import AnnouncementDialog, { dismissAnnouncement, shouldShowAnnouncement } from "./AnnouncementDialog";
 
@@ -161,13 +162,12 @@ function Spotlight({
 }
 
 function Sidebar({ active, onChange }: { active: string; onChange: (value: string) => void }) {
+  const { settings } = useSite();
   return (
     <aside className="sidebar">
-      <button className="brand" onClick={() => onChange("首页")} type="button" title="Alum4K">
-        <span className="brand-mark">
-          <Play size={16} fill="currentColor" />
-        </span>
-        <span>Alum4K</span>
+      <button className="brand" onClick={() => onChange("首页")} type="button" title={settings.branding.name}>
+        <BrandMark />
+        <span>{settings.branding.name}</span>
       </button>
       <nav>
         {navItems.map((item) => {
@@ -194,7 +194,9 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
   query: string; onQuery: (value: string) => void; onSearch: (value: string) => void;
   currentUser: User | null; onOpenAuth: () => void; onLogout: () => void; onNotice?: () => void;
 }) {
+  const { settings } = useSite();
   return <header className="topbar">
+    <a className="mobile-brand" href="/"><BrandMark /><span>{settings.branding.name}</span></a>
     <form className="search-box" onSubmit={(event) => { event.preventDefault(); onSearch(query); }}>
       <input name="query" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="搜索影视名" aria-label="搜索影视名" />
       <button type="submit" title="搜索" aria-label="搜索"><Search size={20} /></button>
@@ -286,10 +288,6 @@ function pickRelatedItems(current: MediaItem, items: MediaItem[]) {
     .map((entry) => entry.item);
 }
 
-function hasVipAccess(user: User | null) {
-  return Boolean(user?.vip || user?.role === "admin");
-}
-
 function vipLabel(user: User) {
   if (user.role === "admin") return "管理员";
   if (user.vip && user.vipUntil) return `VIP至${new Date(user.vipUntil).toISOString().slice(0, 10)}`;
@@ -311,6 +309,7 @@ function DownloadLink({ resource }: { resource: DownloadResource }) {
   return <div className="download-row resource-link-row">
     <div className="resource-link-info">
       <strong>{resource.title || downloadLabel(resource)}</strong>
+      <span className={`resource-access ${resource.access === "free" ? "free" : "vip"}`}>{resource.access === "free" ? "免费" : "VIP"}</span>
       <small>{[resource.size, resource.note].filter(Boolean).join(" · ")}</small>
       {resource.code ? <small>提取码：{resource.code}</small> : null}
       <div className="resource-url-line">
@@ -330,7 +329,6 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
   onBack: () => void; onSelectRelated: (item: MediaItem) => void;
 }) {
   const resources = item.resources ?? [];
-  const vip = hasVipAccess(currentUser);
   const [resourceType, setResourceType] = useState<"115" | "magnet">("115");
   useEffect(() => { setResourceType(resources.some((resource) => resource.type === "115") ? "115" : "magnet"); }, [item.id]);
   const visible = resources.filter((resource) => resource.type === resourceType);
@@ -359,10 +357,7 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
             {type === "115" ? <Download size={16} /> : <Link2 size={16} />}{type === "115" ? "115网盘" : "磁力链接"}<span>{resources.filter((resource) => resource.type === type).length}</span>
           </button>)}
         </div>
-        {!vip ? <div className="player-placeholder"><Crown size={32} />
-          <span>{currentUser ? "当前账号尚未开通 VIP，开通后可查看下载链接。" : "登录并开通 VIP 后可查看下载链接。"}</span>
-          {!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : null}
-        </div> : visible.length ? <div className="download-list">{visible.map((resource) => <DownloadLink key={resource.id} resource={resource} />)}</div>
+        {visible.length ? <div className="download-list">{visible.map((resource) => resource.url ? <DownloadLink key={resource.id} resource={resource} /> : <div className="download-row locked-resource" key={resource.id}><div><strong>{resource.title || downloadLabel(resource)}</strong><span className="resource-access vip">VIP</span><small>{currentUser ? "VIP 会员可查看此链接" : "登录并开通 VIP 后可查看此链接"}</small></div>{!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : <Crown size={22} />}</div>)}</div>
           : <div className="resource-empty"><Download size={26} /><span>暂无{resourceType === "115" ? "115网盘" : "磁力"}链接</span></div>}
       </section>
       <aside className="episode-panel">
