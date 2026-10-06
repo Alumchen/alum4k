@@ -1,6 +1,12 @@
-import type { AuthState, MediaItem, MediaType, SiteSettings, User } from "./types";
+import type { AuthState, FilmRequest, Invitation, MediaItem, MediaType, SiteSettings, User } from "./types";
 
 const TOKEN_KEY = "alum4k_token";
+
+function expireSession(response: Response, url: string, token: string) {
+  if (token && response.status === 401 && !["/api/auth/login", "/api/auth/register"].includes(url)) {
+    setAuthToken(""); window.dispatchEvent(new Event("alum4k:session-expired"));
+  }
+}
 
 async function readJson<T>(url: string): Promise<T> {
   const token = getAuthToken();
@@ -8,6 +14,7 @@ async function readJson<T>(url: string): Promise<T> {
     headers: token ? { authorization: `Bearer ${token}` } : undefined
   });
   if (!response.ok) {
+    expireSession(response, url, token);
     const detail = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(detail.message ?? response.statusText);
   }
@@ -26,6 +33,7 @@ async function writeJson<T>(url: string, method: "POST" | "PUT" | "DELETE", body
   });
 
   if (!response.ok) {
+    expireSession(response, url, token);
     const detail = await response.json().catch(() => ({ message: response.statusText }));
     throw new Error(detail.message ?? response.statusText);
   }
@@ -48,8 +56,8 @@ export async function login(username: string, password: string) {
   return payload;
 }
 
-export async function register(username: string, password: string) {
-  const payload = await writeJson<AuthState>("/api/auth/register", "POST", { username, password });
+export async function register(username: string, password: string, invitationCode: string) {
+  const payload = await writeJson<AuthState>("/api/auth/register", "POST", { username, password, invitationCode });
   setAuthToken(payload.token);
   return payload;
 }
@@ -62,7 +70,7 @@ export async function fetchCurrentUser() {
     headers: { authorization: `Bearer ${token}` }
   });
   if (!response.ok) {
-    if (response.status === 401) setAuthToken("");
+    expireSession(response, "/api/auth/me", token);
     return null;
   }
 
@@ -108,15 +116,7 @@ export async function collectTmdb(item: Partial<MediaItem>) {
 }
 
 export async function fetchUsers() {
-  const token = getAuthToken();
-  const response = await fetch("/api/admin/users", {
-    headers: token ? { authorization: `Bearer ${token}` } : undefined
-  });
-  if (!response.ok) {
-    const detail = await response.json().catch(() => ({ message: response.statusText }));
-    throw new Error(detail.message ?? response.statusText);
-  }
-  const payload = (await response.json()) as { users: User[] };
+  const payload = await readJson<{ users: User[] }>("/api/admin/users");
   return payload.users;
 }
 
@@ -144,4 +144,25 @@ export function batchMedia(action: "classify" | "delete", ids: string[]) {
 
 export function importLibrary(items: Partial<MediaItem>[]) {
   return writeJson<{ count: number }>("/api/admin/media/import", "POST", { items });
+}
+
+export async function saveProfile(profile: { displayName: string; avatar: string; bio: string }) {
+  return (await writeJson<{ user: User }>("/api/auth/profile", "PUT", profile)).user;
+}
+export async function changePassword(currentPassword: string, newPassword: string) {
+  const result = await writeJson<AuthState>("/api/auth/password", "PUT", { currentPassword, newPassword });
+  setAuthToken(result.token); return result;
+}
+export async function resetPassword(username: string, password: string) {
+  return (await writeJson<{ user: User }>(`/api/admin/users/${encodeURIComponent(username)}/password`, "PUT", { password })).user;
+}
+export async function fetchInvitations() { return (await readJson<{ items: Invitation[] }>("/api/admin/invitations")).items; }
+export async function generateInvitation() { return (await writeJson<{ item: Invitation }>("/api/admin/invitations", "POST")).item; }
+export function disableInvitation(code: string) { return writeJson(`/api/admin/invitations/${code}`, "PUT"); }
+export async function fetchRequests(admin = false) { return (await readJson<{ items: FilmRequest[] }>(admin ? "/api/admin/requests" : "/api/requests")).items; }
+export async function submitRequest(input: { title: string; mediaType: "movie" | "tv"; year?: number; note: string }) {
+  return (await writeJson<{ item: FilmRequest }>("/api/requests", "POST", input)).item;
+}
+export async function updateRequest(id: string, status: FilmRequest["status"], reply: string) {
+  return (await writeJson<{ item: FilmRequest }>(`/api/admin/requests/${encodeURIComponent(id)}`, "PUT", { status, reply })).item;
 }

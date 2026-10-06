@@ -87,6 +87,9 @@ export interface User {
   vip: boolean;
   vipUntil?: string | null;
   createdAt?: string;
+  displayName?: string;
+  avatar?: string;
+  bio?: string;
 }
 
 export interface AuthState {
@@ -95,3 +98,4 @@ export interface AuthState {
 }
 
 export type { Announcement, SiteSettings } from "../shared/site";
+export type { FilmRequest, Invitation } from "../shared/community";

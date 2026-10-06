@@ -2,22 +2,36 @@ import "dotenv/config";
 import express from "express";
 import {
   ensureAdminUser, listUsers, loginUser, registerUser, createAdminUser, requireAuth, requireAdmin,
-  setUserVip, userFromRequest, type AuthenticatedRequest
+  setUserVip, userFromRequest, generateInvitation, listInvitations, disableInvitation, updateProfile, changePassword, resetUserPassword, type AuthenticatedRequest
 } from "./auth";
 import { batchMedia, deleteMedia, findMedia, importLibrary, loadLibrary, upsertMedia } from "./library";
 import { getTmdbDetail, hasTmdbCredentials, searchTmdb } from "./tmdb";
 import { loadSettings, saveSettings } from "./settings";
 import { isDownloadUrl } from "../shared/media";
 import type { MediaItem, MediaType } from "./types";
+import { listFilmRequests, submitFilmRequest, updateFilmRequest } from "./requests";
+import { syncSiteHead } from "./seo";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
 app.disable("x-powered-by");
+app.set("trust proxy", "loopback");
 app.use(express.json({ limit: "10mb" }));
 app.use("/api", (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
   next();
 });
+
+function limitAttempts(maximum: number) {
+  const attempts = new Map<string, { count: number; until: number }>();
+  return (request: express.Request, response: express.Response, next: express.NextFunction) => {
+    const now = Date.now(); for (const [key, value] of attempts) if (value.until <= now) attempts.delete(key);
+    const key = request.ip ?? request.socket.remoteAddress ?? "unknown";
+    const record = attempts.get(key) ?? { count: 0, until: now + 15 * 60000 };
+    if (record.count >= maximum || attempts.size >= 5000) { response.setHeader("Retry-After", Math.ceil((record.until - now) / 1000)); response.status(429).json({ message: "尝试次数过多，请稍后重试。" }); return; }
+    record.count++; attempts.set(key, record); next();
+  };
+}
 
 function normalizeExactSearch(value: unknown) {
   return String(value ?? "").trim().toLowerCase().replace(/[《》<>"']/g, "").replace(/[\s._\-:：·，,。/\\]+/g, "");
@@ -74,17 +88,37 @@ app.put("/api/admin/settings", requireAdmin, async (request, response) => {
   catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "公告保存失败。" }); }
 });
 
-app.post("/api/auth/register", async (request, response) => {
-  try { response.status(201).json(await registerUser(String(request.body?.username ?? ""), String(request.body?.password ?? ""))); }
+app.post("/api/auth/register", limitAttempts(30), async (request, response) => {
+  try { response.status(201).json(await registerUser(String(request.body?.username ?? ""), String(request.body?.password ?? ""), String(request.body?.invitationCode ?? ""))); }
   catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "注册失败。" }); }
 });
 
-app.post("/api/auth/login", async (request, response) => {
+app.post("/api/auth/login", limitAttempts(60), async (request, response) => {
   try { response.json(await loginUser(String(request.body?.username ?? ""), String(request.body?.password ?? ""))); }
   catch (error) { response.status(401).json({ message: error instanceof Error ? error.message : "登录失败。" }); }
 });
 
 app.get("/api/auth/me", requireAuth, (request: AuthenticatedRequest, response) => response.json({ user: request.user }));
+
+app.put("/api/auth/profile", requireAuth, async (request: AuthenticatedRequest, response) => {
+  try { response.json({ user: await updateProfile(request.user!.username, request.body) }); }
+  catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "资料保存失败。" }); }
+});
+app.put("/api/auth/password", requireAuth, limitAttempts(20), async (request: AuthenticatedRequest, response) => {
+  try { response.json(await changePassword(request.user!.username, String(request.body?.currentPassword ?? ""), String(request.body?.newPassword ?? ""))); }
+  catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "密码修改失败。" }); }
+});
+app.put("/api/admin/users/:username/password", requireAdmin, async (request, response) => {
+  try { response.json({ user: await resetUserPassword(request.params.username, String(request.body?.password ?? "")) }); }
+  catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "密码重置失败。" }); }
+});
+app.get("/api/admin/invitations", requireAdmin, async (_request, response, next) => { try { response.json({ items: await listInvitations() }); } catch (error) { next(error); } });
+app.post("/api/admin/invitations", requireAdmin, async (request: AuthenticatedRequest, response, next) => { try { response.status(201).json({ item: await generateInvitation(request.user!.username) }); } catch (error) { next(error); } });
+app.put("/api/admin/invitations/:code", requireAdmin, async (request, response) => { try { response.json({ item: await disableInvitation(request.params.code) }); } catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "停用失败。" }); } });
+app.get("/api/requests", requireAuth, async (request: AuthenticatedRequest, response, next) => { try { response.json({ items: await listFilmRequests(request.user!.username) }); } catch (error) { next(error); } });
+app.post("/api/requests", requireAuth, async (request: AuthenticatedRequest, response) => { try { response.status(201).json({ item: await submitFilmRequest(request.user!.username, request.body) }); } catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "提交失败。" }); } });
+app.get("/api/admin/requests", requireAdmin, async (_request, response, next) => { try { response.json({ items: await listFilmRequests() }); } catch (error) { next(error); } });
+app.put("/api/admin/requests/:id", requireAdmin, async (request: AuthenticatedRequest, response) => { try { response.json({ item: await updateFilmRequest(String(request.params.id), request.body, request.user!.username) }); } catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "保存失败。" }); } });
 
 app.get("/api/admin/users", requireAdmin, async (_request, response, next) => {
   try { response.json({ users: await listUsers() }); } catch (error) { next(error); }
@@ -199,4 +233,5 @@ app.use((error: unknown, _request: express.Request, response: express.Response, 
 });
 
 await ensureAdminUser();
+await syncSiteHead(await loadSettings());
 app.listen(port, "0.0.0.0", () => console.log(`API listening on http://127.0.0.1:${port}`));

@@ -1,16 +1,19 @@
 import {
   ArrowLeft, Bell, CheckCircle2, ChevronLeft, ChevronRight, Database, Download,
   FilePlus2, Film, Image, LayoutDashboard, Loader2, LogOut, Pencil, Plus, RefreshCcw,
-  Save, Search, ShieldCheck, Sparkles, Trash2, Upload, Users, X
+  Save, Search, ShieldCheck, Sparkles, Trash2, Upload, Users, X, KeyRound, MessageSquare
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { batchMedia, collectTmdb, createAdmin, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip } from "./api";
+import { batchMedia, collectTmdb, createAdmin, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip, resetPassword } from "./api";
 import { classifyMedia, mediaCategories } from "../shared/media";
 import { defaultSettings, themes } from "../shared/site";
 import { BrandMark, useSite } from "./SiteContext";
 import ResourceEditor, { cleanResources } from "./ResourceEditor";
 import AnnouncementDialog from "./AnnouncementDialog";
 import Dialog from "./Dialog";
+import NoticeBoard from "./NoticeBoard";
+import BulletinEditor from "./BulletinEditor";
+import { InvitationAdmin, RequestsAdmin } from "./CommunityAdmin";
 import type { MediaItem, SiteSettings, User } from "./types";
 
 const blank: MediaItem = {
@@ -18,11 +21,13 @@ const blank: MediaItem = {
   region: "其他", access: "会员", status: "待补资源", genres: [], cast: [], overview: "",
   posterPath: "", backdropPath: "", resources: [], episodes: [], featured: false
 };
-type View = "library" | "collect" | "users" | "settings";
+type View = "library" | "collect" | "users" | "settings" | "invitations" | "requests";
 const sections = [
   { key: "library" as const, label: "媒体库", icon: Database },
   { key: "collect" as const, label: "影视采集", icon: FilePlus2 },
   { key: "users" as const, label: "用户 / VIP", icon: Users },
+  { key: "invitations" as const, label: "邀请码", icon: KeyRound },
+  { key: "requests" as const, label: "求片管理", icon: MessageSquare },
   { key: "settings" as const, label: "站点设置", icon: Bell }
 ];
 const pageSize = 12;
@@ -69,6 +74,8 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   const [adminPassword, setAdminPassword] = useState("");
   const [adminConfirm, setAdminConfirm] = useState("");
   const [adminError, setAdminError] = useState("");
+  const [resetUser, setResetUser] = useState<User | null>(null);
+  const [resetNew, setResetNew] = useState(""); const [resetConfirm, setResetConfirm] = useState(""); const [resetError, setResetError] = useState("");
   const logoInput = useRef<HTMLInputElement>(null);
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -116,6 +123,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
     if (busy) return;
     if (((view === "collect" && dirty) || (view === "settings" && settingsDirty)) && !window.confirm("当前修改尚未保存，确认离开？")) return;
     setView(next); setNotice(null);
+    loadUsers().catch(report);
   }
   function logout() {
     if (busy) return;
@@ -229,8 +237,11 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
       <header className="admin-page-head"><div><span>{publishedSettings.branding.name} / 管理后台</span><h1>{sections.find((section) => section.key === view)?.label}</h1></div>
         <div className="admin-head-actions"><span className="admin-account"><ShieldCheck size={16} />{currentUser.username}</span><button className="admin-icon-button" type="button" title="刷新数据" disabled={busy} onClick={() => run(async () => { await onLibraryChange(); await loadUsers(); if (!settingsDirty) await loadSiteSettings(); setNotice({ text: "数据已刷新。", error: false }); })}><RefreshCcw size={17} /></button><button className="admin-icon-button" type="button" title="退出登录" disabled={busy} onClick={logout}><LogOut size={17} /></button></div>
       </header>
+      <NoticeBoard />
       <div className="admin-summary"><div><strong>{library.length}</strong><span>影视条目</span></div><div><strong>{library.filter((item) => item.resources?.length).length}</strong><span>已有资源</span></div><div><strong>{users.filter((user) => user.role !== "admin").length}</strong><span>注册用户</span></div><div><strong>{users.filter((user) => user.role !== "admin" && user.vip).length}</strong><span>有效 VIP</span></div></div>
       {notice ? <div className={`admin-feedback ${notice.error ? "error" : "success"}`} role={notice.error ? "alert" : "status"}><CheckCircle2 size={17} /><span>{notice.text}</span><button type="button" onClick={() => setNotice(null)} title="关闭提示"><X size={16} /></button></div> : null}
+      {view === "invitations" ? <InvitationAdmin /> : null}
+      {view === "requests" ? <RequestsAdmin /> : null}
 
       {view === "library" ? <section className="admin-library-view">
         <div className="admin-toolbar">
@@ -302,6 +313,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
             <button type="button" disabled={busy} onClick={() => extendVip(user, 30)}>+30天</button><button type="button" disabled={busy} onClick={() => extendVip(user, 90)}>+90天</button><button type="button" disabled={busy} onClick={() => extendVip(user, 365)}>+1年</button><button type="button" disabled={busy} onClick={() => updateVip(user, true, null)}>永久</button>
             <input type="date" aria-label={`${user.username} VIP 到期日`} value={vipDates[user.username] ?? ""} onChange={(event) => setVipDates((dates) => ({ ...dates, [user.username]: event.target.value }))} />
             <button type="button" disabled={busy || !vipDates[user.username]} onClick={() => updateVip(user, true, vipDates[user.username])}>设置到期日</button><button className="danger-action" type="button" disabled={busy || !user.vip} onClick={() => updateVip(user, false, null)}>取消 VIP</button>
+            <button type="button" disabled={busy} onClick={() => { setResetUser(user); setResetNew(""); setResetConfirm(""); setResetError(""); }}><KeyRound size={16} />重置密码</button>
           </div>}</div>)}</div>{!filteredUsers.length ? <div className="admin-empty"><Users size={28} />没有匹配的用户</div> : null}
       </section> : null}
 
@@ -311,6 +323,11 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <label className="admin-wide-field">网站名称<input maxLength={24} value={settings.branding.name} required onChange={(event) => setSettings({ ...settings, branding: { ...settings.branding, name: event.target.value } })} /></label>
           <div className="branding-controls"><div className="logo-preview">{settings.branding.logo ? <img src={settings.branding.logo} alt="Logo 预览" /> : <Film size={26} />}</div><div><button type="button" onClick={() => logoInput.current?.click()}><Upload size={16} />上传 Logo</button><button type="button" disabled={!settings.branding.logo} onClick={() => setSettings({ ...settings, branding: { ...settings.branding, logo: "" } })}><Trash2 size={16} />移除 Logo</button></div><input ref={logoInput} type="file" accept="image/png,image/jpeg,image/webp" aria-label="上传网站 Logo" hidden onChange={(event) => readLogo(event.target.files?.[0])} /></div>
           <div className="theme-picker" role="radiogroup" aria-label="网站背景主题">{themes.map((theme) => <label key={theme.value} className={settings.branding.theme === theme.value ? "selected" : ""}><span className="theme-swatch" style={{ background: theme.background }}><span style={{ background: theme.surface }} /></span><span>{theme.label}</span><input type="radio" name="site-theme" value={theme.value} checked={settings.branding.theme === theme.value} onChange={() => setSettings({ ...settings, branding: { ...settings.branding, theme: theme.value } })} /></label>)}</div>
+          <h2 className="settings-section-heading"><Search size={18} />浏览器标题与介绍</h2>
+          <label className="admin-wide-field">前台浏览器标题<input maxLength={80} value={settings.seo.title} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, title: event.target.value } })} /></label>
+          <label className="admin-wide-field">后台浏览器标题<input maxLength={80} value={settings.seo.adminTitle} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, adminTitle: event.target.value } })} /></label>
+          <label className="admin-wide-field">网站介绍<textarea aria-label="网站介绍" rows={3} maxLength={240} value={settings.seo.description} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, description: event.target.value } })} /></label>
+          <BulletinEditor items={settings.bulletins} onChange={(bulletins) => setSettings((settings) => ({ ...settings, bulletins }))} />
           <h2 className="settings-section-heading"><Bell size={18} />首页公告</h2>
           <label className="switch-field"><input type="checkbox" checked={settings.announcement.enabled} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, enabled: event.target.checked } })} /><span>启用首页弹窗</span></label>
           <label className="admin-wide-field">公告标题<input maxLength={80} value={settings.announcement.title} required onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, title: event.target.value } })} /></label>
@@ -321,6 +338,11 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
       </form> : null}
     </main>
     {preview ? <AnnouncementDialog announcement={settings.announcement} onClose={() => setPreview(false)} /> : null}
+    {resetUser ? <Dialog title={`重置 ${resetUser.username} 的密码`} onClose={() => { if (!busy) { setResetUser(null); setResetNew(""); setResetConfirm(""); } }}><form className="auth-fields" onSubmit={async (event) => {
+      event.preventDefault(); if (busy) return; setResetError(""); if (resetNew !== resetConfirm) { setResetError("两次密码输入不一致。"); return; }
+      setBusy(true); try { const user = await resetPassword(resetUser.username, resetNew); setUsers((items) => items.map((item) => item.username === user.username ? user : item)); setResetUser(null); setResetNew(""); setResetConfirm(""); setNotice({ text: `${user.username} 的密码已重置，旧登录会话已失效。`, error: false }); }
+      catch (error) { setResetError(error instanceof Error ? error.message : "重置失败。"); } finally { setBusy(false); }
+    }}><label>新密码<input type="password" required minLength={6} maxLength={128} autoComplete="new-password" value={resetNew} onChange={(event) => setResetNew(event.target.value)} disabled={busy} /></label><label>确认新密码<input type="password" required maxLength={128} autoComplete="new-password" value={resetConfirm} onChange={(event) => setResetConfirm(event.target.value)} disabled={busy} /></label>{resetError ? <p className="form-error" role="alert">{resetError}</p> : null}<button type="submit" className="primary-action" disabled={busy}><KeyRound size={16} />{busy ? "重置中…" : "确认重置"}</button></form></Dialog> : null}
     {adminOpen ? <Dialog title="添加管理员" onClose={() => { if (!busy) { setAdminOpen(false); setAdminPassword(""); setAdminConfirm(""); } }}><form className="auth-fields" onSubmit={addAdmin}>
       <label>管理员用户名<input required minLength={3} maxLength={20} value={adminName} autoComplete="off" onChange={(event) => setAdminName(event.target.value)} disabled={busy} /></label>
       <label>管理员密码<input required minLength={10} maxLength={128} type="password" autoComplete="new-password" value={adminPassword} onChange={(event) => setAdminPassword(event.target.value)} disabled={busy} /></label>

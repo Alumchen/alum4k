@@ -1,11 +1,14 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { classifyMedia, extractDownloadLink, isDownloadUrl } from "../shared/media";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
 let adminToken: string;
 let userToken: string;
+async function invite() { return (await request("/api/admin/invitations", "POST", undefined, adminToken)).body.item.code as string; }
 async function request(endpoint: string, method = "GET", body?: unknown, token?: string) {
   const response = await fetch(api.base + endpoint, {
     method, headers: { ...(body ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },
@@ -16,7 +19,7 @@ async function request(endpoint: string, method = "GET", body?: unknown, token?:
 before(async () => {
   api = await startTestApi();
   adminToken = (await request("/api/auth/login", "POST", { username: "admin", password: adminPassword })).body.token;
-  userToken = (await request("/api/auth/register", "POST", { username: "normal_user", password: "test-password" })).body.token;
+  userToken = (await request("/api/auth/register", "POST", { username: "normal_user", password: "test-password", invitationCode: await invite() })).body.token;
 });
 after(async () => { await api?.close(); });
 
@@ -155,7 +158,7 @@ test("only administrators can create admin accounts and secrets never appear in 
   assert.equal((await request("/api/admin/users", "POST", input, adminToken)).status, 400);
   const signedIn = await request("/api/auth/login", "POST", input);
   assert.equal((await request("/api/admin/users", "GET", undefined, signedIn.body.token)).status, 200);
-  const untrusted = await request("/api/auth/register", "POST", { username: "not_admin", password: "normal-password", role: "admin" });
+  const untrusted = await request("/api/auth/register", "POST", { username: "not_admin", password: "normal-password", role: "admin", invitationCode: await invite() });
   assert.equal(untrusted.body.user.role, "user");
   assert.equal((await request("/api/admin/users", "GET", undefined, untrusted.body.token)).status, 403);
   const concurrent = await Promise.all(Array.from({ length: 4 }, (_, index) => request("/api/admin/users", "POST", { username: `parallel_admin_${index}`, password: "parallel-admin-password" }, adminToken)));
@@ -163,6 +166,91 @@ test("only administrators can create admin accounts and secrets never appear in 
   const users = (await request("/api/admin/users", "GET", undefined, adminToken)).body.users;
   assert.equal(users.filter((user: { username: string }) => user.username.startsWith("parallel_admin_")).length, 4);
   assert.equal(JSON.stringify(users).includes("passwordHash"), false);
+});
+
+test("invitation codes are eight digits, one-use, protected and concurrency-safe", async () => {
+  assert.equal((await request("/api/admin/invitations")).status, 401);
+  assert.equal((await request("/api/admin/invitations", "POST", undefined, userToken)).status, 403);
+  const codes = await Promise.all(Array.from({ length: 8 }, () => invite()));
+  assert.equal(new Set(codes).size, 8); assert.ok(codes.every((code) => /^\d{8}$/.test(code)));
+  const input = { username: "invite_user", password: "invite-test-password" };
+  assert.equal((await request("/api/auth/register", "POST", input)).status, 400);
+  assert.equal((await request("/api/auth/register", "POST", { ...input, invitationCode: "123" })).status, 400);
+  await request(`/api/admin/invitations/${codes[0]}`, "PUT", undefined, adminToken);
+  assert.equal((await request("/api/auth/register", "POST", { ...input, invitationCode: codes[0] })).status, 400);
+  const results = await Promise.all(["invite_user_a", "invite_user_b"].map((username) => request("/api/auth/register", "POST", { ...input, username, invitationCode: codes[1] })));
+  assert.deepEqual(results.map((item) => item.status).sort(), [201, 400]);
+  assert.equal((await request("/api/auth/register", "POST", { ...input, invitationCode: codes[1] })).status, 400);
+  const stored = (await request("/api/admin/invitations", "GET", undefined, adminToken)).body.items.find((item: { code: string }) => item.code === codes[1]);
+  assert.ok(stored.usedAt); assert.ok(stored.usedBy.startsWith("invite_user_"));
+});
+
+test("profiles preserve account permissions and reject unsafe images", async () => {
+  assert.equal((await request("/api/auth/profile", "PUT", { displayName: "访客" })).status, 401);
+  const profile = { displayName: "测试昵称", bio: "我的影视清单", avatar: "", role: "admin", vip: true, username: "admin" };
+  const changed = await request("/api/auth/profile", "PUT", profile, userToken);
+  assert.equal(changed.status, 200); assert.equal(changed.body.user.username, "normal_user"); assert.equal(changed.body.user.role, "user");
+  assert.equal(changed.body.user.displayName, "测试昵称"); assert.equal(changed.body.user.vip, false);
+  assert.equal((await request("/api/auth/me", "GET", undefined, userToken)).body.user.bio, profile.bio);
+  for (const patch of [{ displayName: "<script>" }, { avatar: "data:image/svg+xml;base64,PHN2Zz4=" }, { bio: "x".repeat(161) }]) {
+    assert.equal((await request("/api/auth/profile", "PUT", { ...profile, ...patch }, userToken)).status, 400);
+  }
+  const avatar = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
+  assert.equal((await request("/api/auth/profile", "PUT", { ...profile, avatar }, userToken)).body.user.avatar, avatar);
+  const vip = await request("/api/admin/users/normal_user/vip", "PUT", { vip: false }, adminToken);
+  assert.equal(vip.body.user.displayName, profile.displayName); assert.equal(vip.body.user.avatar, avatar);
+});
+
+test("registered users submit private film requests and administrators respond", async () => {
+  const input = { title: "求片测试", year: 2025, mediaType: "movie", note: "希望提供 4K 版本", username: "admin", status: "fulfilled" };
+  assert.equal((await request("/api/requests", "POST", input)).status, 401);
+  const saved = await request("/api/requests", "POST", input, userToken);
+  assert.equal(saved.status, 201); assert.equal(saved.body.item.username, "normal_user"); assert.equal(saved.body.item.status, "pending");
+  assert.equal((await request("/api/requests", "POST", { ...input, title: " 求片 测试 " }, userToken)).status, 400);
+  assert.equal((await request(`/api/admin/requests/${saved.body.item.id}`, "PUT", { status: "fulfilled", reply: "已添加" }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/requests", "GET", undefined, userToken)).status, 403);
+  assert.equal((await request("/api/requests", "GET", undefined, adminToken)).body.items.length, 0);
+  assert.equal((await request("/api/admin/requests", "GET", undefined, adminToken)).body.items.length, 1);
+  assert.equal((await request(`/api/admin/requests/${saved.body.item.id}`, "PUT", { status: "fulfilled", reply: "已添加，请搜索影视名。" }, adminToken)).status, 200);
+  const mine = (await request("/api/requests", "GET", undefined, userToken)).body.items[0];
+  assert.equal(mine.status, "fulfilled"); assert.equal(mine.reply, "已添加，请搜索影视名。");
+  assert.equal((await request(`/api/admin/requests/${mine.id}`, "PUT", { status: "invalid" }, adminToken)).status, 400);
+  assert.equal((await request("/api/requests", "POST", { ...input, title: "无效年份", year: 1 }, userToken)).status, 400);
+});
+
+test("bulletins and SEO metadata persist safely in production HTML", async () => {
+  const before = (await request("/api/settings")).body;
+  const seo = { title: 'Alum4K <影视> "目录"', adminTitle: "Alum4K 后台", description: "115 & 磁力下载资源介绍" };
+  const bulletins = [{ id: "ad", type: "advertisement", enabled: true, title: "合作信息", content: "<script>不会执行</script>", image: "", link: "https://example.com/" }];
+  assert.equal((await request("/api/admin/settings", "PUT", { seo, bulletins }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/settings", "PUT", { seo, bulletins }, adminToken)).status, 200);
+  const saved = (await request("/api/settings")).body;
+  assert.deepEqual(saved.seo, seo); assert.deepEqual(saved.bulletins, bulletins); assert.deepEqual(saved.branding, before.branding);
+  const html = await readFile(path.join(api.directory, "dist/index.html"), "utf8");
+  assert.ok(html.includes("Alum4K &lt;影视&gt; &quot;目录&quot;")); assert.ok(html.includes("115 &amp; 磁力下载资源介绍"));
+  assert.ok(html.includes('src="/assets/test.js"')); assert.ok(html.includes('name="description"'));
+  assert.equal((await request("/api/admin/settings", "PUT", { bulletins: [{ ...bulletins[0], link: "javascript:alert(1)" }] }, adminToken)).status, 400);
+  assert.equal((await request("/api/admin/settings", "PUT", { bulletins: [{ ...bulletins[0], image: "data:image/svg+xml;base64,PHN2Zz4=" }] }, adminToken)).status, 400);
+  assert.deepEqual((await request("/api/settings")).body.bulletins, bulletins);
+});
+
+test("password changes and administrator resets invalidate old sessions without changing privileges", async () => {
+  assert.equal((await request("/api/auth/password", "PUT", { currentPassword: "wrong", newPassword: "new-user-password" }, userToken)).status, 400);
+  const oldToken = userToken;
+  const changed = await request("/api/auth/password", "PUT", { currentPassword: "test-password", newPassword: "new-user-password" }, userToken);
+  assert.equal(changed.status, 200); userToken = changed.body.token;
+  assert.equal((await request("/api/auth/me", "GET", undefined, oldToken)).status, 401);
+  assert.equal((await request("/api/auth/me", "GET", undefined, userToken)).status, 200);
+  assert.equal((await request("/api/auth/login", "POST", { username: "normal_user", password: "test-password" })).status, 401);
+  assert.equal((await request("/api/auth/login", "POST", { username: "normal_user", password: "new-user-password" })).status, 200);
+  assert.equal((await request("/api/admin/users/normal_user/password", "PUT", { password: "reset-user-password" }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/users/admin/password", "PUT", { password: "reset-admin-password" }, adminToken)).status, 400);
+  const reset = await request("/api/admin/users/normal_user/password", "PUT", { password: "reset-user-password" }, adminToken);
+  assert.equal(reset.status, 200); assert.equal(reset.body.user.displayName, "测试昵称"); assert.equal(reset.body.user.role, "user"); assert.equal(reset.body.user.passwordHash, undefined);
+  assert.equal((await request("/api/auth/me", "GET", undefined, userToken)).status, 401);
+  assert.equal((await request("/api/requests", "GET", undefined, userToken)).status, 401);
+  const signedIn = await request("/api/auth/login", "POST", { username: "normal_user", password: "reset-user-password" });
+  assert.equal(signedIn.status, 200); userToken = signedIn.body.token;
 });
 
 test("branding persists with legacy announcements and rejects invalid themes or executable logos", async () => {
@@ -174,6 +262,7 @@ test("branding persists with legacy announcements and rejects invalid themes or 
   assert.equal((await request("/api/admin/settings", "PUT", { branding }, adminToken)).status, 200);
   const saved = (await request("/api/settings")).body;
   assert.deepEqual(saved.branding, branding); assert.deepEqual(saved.announcement, before.announcement);
+  assert.ok((await readFile(path.join(api.directory, "dist/index.html"), "utf8")).includes(`href="${logo}"`));
   for (const patch of [{ theme: "invalid" }, { name: "<script>" }, { logo: "data:image/svg+xml;base64,PHN2Zz4=" }, { logo: "https://attacker.invalid/logo.svg" }, { logo: "data:image/png;base64,SGVsbG8=" }]) {
     assert.equal((await request("/api/admin/settings", "PUT", { branding: { ...branding, ...patch } }, adminToken)).status, 400);
   }

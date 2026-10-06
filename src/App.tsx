@@ -13,6 +13,7 @@ import {
   History,
   Home,
   ListVideo,
+  LogOut,
   MonitorPlay,
   Play,
   Search,
@@ -29,6 +30,9 @@ import { copyText } from "./clipboard";
 import { BrandMark, useSite } from "./SiteContext";
 import Dialog from "./Dialog";
 import AnnouncementDialog, { dismissAnnouncement, shouldShowAnnouncement } from "./AnnouncementDialog";
+import ProfileDialog from "./ProfileDialog";
+import RequestsDialog from "./RequestsDialog";
+import NoticeBoard, { BoardDialog } from "./NoticeBoard";
 
 import type { DownloadResource, MediaItem, User, Announcement } from "./types";
 import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
@@ -190,9 +194,10 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
   );
 }
 
-function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, onNotice }: {
+function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, onNotice, onProfile, onRequests }: {
   query: string; onQuery: (value: string) => void; onSearch: (value: string) => void;
   currentUser: User | null; onOpenAuth: () => void; onLogout: () => void; onNotice?: () => void;
+  onProfile: () => void; onRequests: () => void;
 }) {
   const { settings } = useSite();
   return <header className="topbar">
@@ -202,8 +207,9 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
       <button type="submit" title="搜索" aria-label="搜索"><Search size={20} /></button>
     </form>
     <div className="top-actions">
+      <button type="button" title="求片" aria-label="求片" onClick={onRequests}><Film size={18} /><span>求片</span></button>
       {onNotice ? <button type="button" title="站点公告" onClick={onNotice}><Bell size={18} /></button> : null}
-      {currentUser ? <button type="button" title="退出登录" onClick={onLogout}><UserRound size={18} /><span>{currentUser.username} · {vipLabel(currentUser)}</span></button>
+      {currentUser ? <><button type="button" title="个人信息" aria-label="个人信息" onClick={onProfile}>{currentUser.avatar ? <img className="topbar-avatar" src={currentUser.avatar} alt="" /> : <UserRound size={18} />}<span>{currentUser.displayName || currentUser.username} · {vipLabel(currentUser)}</span></button><button type="button" title="退出登录" aria-label="退出登录" onClick={onLogout}><LogOut size={18} /></button></>
         : <button className="avatar" type="button" onClick={onOpenAuth} title="登录/注册" aria-label="登录/注册"><UserRound size={18} /></button>}
     </div>
   </header>;
@@ -213,13 +219,14 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [invitationCode, setInvitationCode] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true); setMessage("");
     try {
-      const result = mode === "login" ? await login(username, password) : await register(username, password);
+      const result = mode === "login" ? await login(username, password) : await register(username, password, invitationCode);
       onAuthed(result.user); onClose();
     } catch (error) { setMessage(error instanceof Error ? error.message : "操作失败。"); }
     finally { setLoading(false); }
@@ -227,7 +234,8 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
   return <Dialog title={mode === "login" ? "登录" : "注册"} onClose={onClose} className="auth-dialog">
     <form className="auth-fields" onSubmit={submit}>
       <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" required maxLength={20} /></label>
-      <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} /></label>
+      <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} maxLength={128} /></label>
+      {mode === "register" ? <label>邀请码<input required inputMode="numeric" pattern="[0-9]{8}" minLength={8} maxLength={8} value={invitationCode} onChange={(event) => setInvitationCode(event.target.value.replace(/\D/g, ""))} autoComplete="off" /></label> : null}
       {message ? <p className="form-error" role="alert">{message}</p> : null}
       <button className="primary-action" type="submit" disabled={loading}>{loading ? "处理中…" : mode === "login" ? "登录" : "注册"}</button>
       <button className="auth-switch" type="button" disabled={loading} onClick={() => { setMode(mode === "login" ? "register" : "login"); setPassword(""); setMessage(""); }}>
@@ -479,6 +487,9 @@ export default function App() {
   const [searchMode, setSearchMode] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [requestsOpen, setRequestsOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
   const [filters, setFilters] = useState({ genre: "全部", access: "全部", region: "全部" });
@@ -494,6 +505,11 @@ export default function App() {
     refreshLibrary().catch((error) => setLoadError(error.message)).finally(() => setLoading(false));
     fetchCurrentUser().then(setCurrentUser).catch(() => undefined);
     fetchSettings().then(({ announcement }) => { setAnnouncement(announcement); setNoticeOpen(shouldShowAnnouncement(announcement)); }).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    function expire() { setCurrentUser(null); setProfileOpen(false); setRequestsOpen(false); setAuthOpen(true); refreshLibrary().catch((error) => setLoadError(error.message)); }
+    window.addEventListener("alum4k:session-expired", expire);
+    return () => window.removeEventListener("alum4k:session-expired", expire);
   }, []);
 
   const filteredItems = useMemo(() => {
@@ -527,8 +543,9 @@ export default function App() {
     <Sidebar active={activeNav} onChange={handleNav} />
     <main className="main-shell">
       <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)}
-        onNotice={announcement?.enabled ? () => setNoticeOpen(true) : undefined}
+        onNotice={() => setBoardOpen(true)} onProfile={() => setProfileOpen(true)} onRequests={() => currentUser ? setRequestsOpen(true) : setAuthOpen(true)}
         onLogout={() => { setAuthToken(""); setCurrentUser(null); setSelected(null); refreshLibrary().catch((error) => setLoadError(error.message)); }} />
+      <NoticeBoard />
       {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={() => refreshLibrary().catch((error) => setLoadError(error.message))}>重试</button></div> : null}
       {selected ? <DetailView item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={() => setSelected(null)}
         onSelectRelated={(item) => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
@@ -536,6 +553,9 @@ export default function App() {
     </main>
     <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(activeNav === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
     {authOpen ? <AuthModal onClose={() => setAuthOpen(false)} onAuthed={(user) => { setCurrentUser(user); refreshLibrary().catch((error) => setLoadError(error.message)); }} /> : null}
-    {announcement && noticeOpen && !selected && !authOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
+    {currentUser && profileOpen ? <ProfileDialog user={currentUser} onChange={setCurrentUser} onClose={() => setProfileOpen(false)} /> : null}
+    {currentUser && requestsOpen ? <RequestsDialog onClose={() => setRequestsOpen(false)} /> : null}
+    {boardOpen ? <BoardDialog onClose={() => setBoardOpen(false)} /> : null}
+    {announcement && noticeOpen && !selected && !authOpen && !profileOpen && !requestsOpen && !boardOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
   </div>;
 }

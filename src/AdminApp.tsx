@@ -36,6 +36,11 @@ export default function AdminApp() {
     finally { setBusy(false); }
   }
   function logout() { setAuthToken(""); setUser(null); setLibrary([]); setReady(false); setPassword(""); setMessage(""); }
+  useEffect(() => {
+    function expire() { logout(); setMessage("登录已失效，请重新登录。"); }
+    window.addEventListener("alum4k:session-expired", expire);
+    return () => window.removeEventListener("alum4k:session-expired", expire);
+  }, []);
 
   if (checking) return <div className="admin-gate"><Loader2 className="spin" size={26} /><span>正在验证账号…</span></div>;
   if (user?.role === "admin") {

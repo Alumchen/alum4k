@@ -21,6 +21,8 @@ export async function freePort() {
 export async function startTestApi() {
   const directory = await mkdtemp(path.join(tmpdir(), "alum4k-test-"));
   await mkdir(path.join(directory, "data"));
+  await mkdir(path.join(directory, "dist"));
+  await writeFile(path.join(directory, "dist", "index.html"), '<html><head><!--alum4k:head:start--><title>Alum4K</title><!--alum4k:head:end--><script src="/assets/test.js"></script></head><body><div id="root"></div></body></html>');
   const movie = {
     id: "test-movie", tmdbId: 123456, mediaType: "movie", title: "验证电影", originalTitle: "Test Movie", year: 2024,
     category: "电影", region: "内地", access: "会员", status: "正片", rating: 8.5, genres: ["喜剧"], cast: ["测试演员"],
