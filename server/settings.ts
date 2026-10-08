@@ -11,7 +11,7 @@ let pendingWrite: Promise<unknown> = Promise.resolve();
 export async function loadSettings(): Promise<SiteSettings> {
   try {
     const stored = JSON.parse(await readFile(settingsFile, "utf-8"));
-    return { branding: { ...defaultSettings.branding, ...stored.branding }, announcement: { ...defaultSettings.announcement, ...stored.announcement }, seo: { ...defaultSettings.seo, ...stored.seo }, bulletins: stored.bulletins ?? [] };
+    return { branding: { ...defaultSettings.branding, ...stored.branding }, announcement: { ...defaultSettings.announcement, ...stored.announcement }, seo: { ...defaultSettings.seo, ...stored.seo }, bulletins: stored.bulletins ?? [], registration: { ...defaultSettings.registration, ...stored.registration } };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(defaultSettings);
     throw error;
@@ -26,8 +26,15 @@ export function saveSettings(input: unknown) {
 
 async function persistSettings(input: unknown) {
   if (!input || typeof input !== "object" || Array.isArray(input)) throw new Error("站点配置不正确。");
-  const payload = input as { announcement?: Record<string, unknown>; branding?: Record<string, unknown>; seo?: Record<string, unknown>; bulletins?: unknown };
+  const payload = input as { announcement?: Record<string, unknown>; branding?: Record<string, unknown>; seo?: Record<string, unknown>; bulletins?: unknown; registration?: unknown };
   const settings = await loadSettings();
+  if (payload.registration !== undefined) {
+    const raw = payload.registration;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw) || typeof (raw as { hint?: unknown }).hint !== "string") throw new Error("注册提示配置不正确。");
+    const hint = (raw as { hint: string }).hint.trim();
+    if (hint.length > 500 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(hint)) throw new Error("注册提示最多 500 字，不能包含控制字符。");
+    settings.registration = { hint };
+  }
   if (payload.branding) {
     const raw = payload.branding;
     const name = typeof raw.name === "string" ? raw.name.trim() : "";
@@ -69,7 +76,7 @@ async function persistSettings(input: unknown) {
     const unchanged = Object.entries(announcement).every(([key, value]) => settings.announcement[key as keyof typeof announcement] === value);
     settings.announcement = { ...announcement, revision: unchanged ? settings.announcement.revision : crypto.randomUUID() };
   }
-  if (!payload.announcement && !payload.branding && !payload.seo && payload.bulletins === undefined) throw new Error("请提供站点或公告配置。");
+  if (!payload.announcement && !payload.branding && !payload.seo && payload.bulletins === undefined && payload.registration === undefined) throw new Error("请提供站点或公告配置。");
   await mkdir(path.dirname(settingsFile), { recursive: true });
   const temporaryFile = `${settingsFile}.${crypto.randomUUID()}.tmp`;
   await writeFile(temporaryFile, `${JSON.stringify(settings, null, 2)}\n`, "utf-8");

@@ -2,7 +2,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { defaultFilters, filterCatalog, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia } from "../shared/catalog";
+import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia } from "../shared/catalog";
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl } from "../shared/media";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
@@ -24,6 +24,23 @@ before(async () => {
   userToken = (await request("/api/auth/register", "POST", { username: "normal_user", password: "test-password", invitationCode: await invite() })).body.token;
 });
 after(async () => { await api?.close(); });
+
+test("latest homepage groups use category and update date, limited to two rows", () => {
+  const base = { mediaType: "movie" as const, title: "电影", category: "电影", region: "内地", genres: [] };
+  const items = [{ ...base, id: "old", createdAt: "2026-01-01" }, { ...base, id: "recent", updatedAt: "2026-10-08" }, { ...base, id: "tv", category: "电视剧", updatedAt: "2026-10-09" }, { ...base, id: "new", createdAt: "2026-10-01" }];
+  assert.deepEqual(latestCategoryItems(items, "电影", 2).map((item) => item.id), ["recent", "new"]);
+  assert.equal(latestCategoryItems(items, "综艺", 4).length, 0);
+});
+
+test("registration hint defaults, persists, validates and requires administrator", async () => {
+  assert.equal((await request("/api/settings")).body.registration.hint, "限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。");
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "新提示" } }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "活动提示\n联系管理员领取邀请码" } }, adminToken)).status, 200);
+  assert.equal((await request("/api/settings")).body.registration.hint, "活动提示\n联系管理员领取邀请码");
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "x".repeat(501) } }, adminToken)).status, 400);
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: [] }, adminToken)).status, 400);
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "" } }, adminToken)).status, 200);
+});
 
 test("catalog exact aliases, suggestions, compound filters and URL round trips", () => {
   const movie = { id: "中文片名", mediaType: "movie" as const, title: "测试电影", originalTitle: "Test Movie", aliases: ["旧译名"], category: "电影", region: "内地", genres: ["喜剧"], year: 2024, rating: 8.5, resources: [{ access: "free" as const, availability: "available" }, { access: "vip" as const }] };

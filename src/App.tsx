@@ -32,14 +32,14 @@ import Dialog from "./Dialog";
 import AnnouncementDialog, { dismissAnnouncement, shouldShowAnnouncement } from "./AnnouncementDialog";
 import ProfileDialog from "./ProfileDialog";
 import RequestsDialog from "./RequestsDialog";
-import NoticeBoard, { BoardDialog } from "./NoticeBoard";
+import { BoardDialog } from "./NoticeBoard";
 
 import type { DownloadResource, MediaItem, User, Announcement } from "./types";
 import { Link2, Share2 } from "lucide-react";
 import DownloadLink, { ResourceSummary } from "./ResourceDownloads";
 import SearchBox from "./SearchBox";
 import usePageSeo from "./usePageSeo";
-import { catalogPath, defaultFilters, filterCatalog, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
+import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
 
 const navItems = [
   { label: "首页", icon: Home },
@@ -217,6 +217,7 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
 }
 
 function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user: User) => void }) {
+  const { settings } = useSite();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -234,6 +235,7 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
   }
   return <Dialog title={mode === "login" ? "登录" : "注册"} onClose={onClose} className="auth-dialog">
     <form className="auth-fields" onSubmit={submit}>
+      {mode === "register" && settings.registration.hint ? <p className="registration-hint">{settings.registration.hint}</p> : null}
       <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" required maxLength={20} /></label>
       <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} maxLength={128} /></label>
       {mode === "register" ? <label>邀请码<input required inputMode="numeric" pattern="[0-9]{8}" minLength={8} maxLength={8} value={invitationCode} onChange={(event) => setInvitationCode(event.target.value.replace(/\D/g, ""))} autoComplete="off" /></label> : null}
@@ -353,6 +355,29 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
   </section>;
 }
 
+function LatestHome({ items, loading, onSelect, onCategory }: { items: MediaItem[]; loading: boolean; onSelect: (item: MediaItem) => void; onCategory: (category: string) => void }) {
+  const container = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(2);
+  useEffect(() => {
+    const observer = new ResizeObserver(([entry]) => {
+      const width = entry.contentRect.width;
+      const gap = width < 560 ? 12 : 24;
+      setColumns(Math.max(2, Math.min(10, Math.floor((width + gap) / (width < 560 ? 152 : 196)))));
+    });
+    if (container.current) observer.observe(container.current);
+    return () => observer.disconnect();
+  }, []);
+  return <div className="latest-home" ref={container}>{["电视剧", "电影", "综艺", "动漫"].map((category) => {
+    const latest = latestCategoryItems(items, category, columns * 2);
+    return <section className="latest-category" key={category} aria-label={`${category}最新更新`}>
+      <header className="latest-category-head"><h2>{category}</h2><button type="button" onClick={() => onCategory(category)}>更多<ChevronDown size={16} /></button></header>
+      {loading ? <div className="loading-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{Array.from({ length: columns * 2 }).map((_, index) => <div className="skeleton-card" key={index} />)}</div>
+        : latest.length ? <div className="media-grid latest-media-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{latest.map((item) => <MediaCard item={item} key={item.id} onSelect={onSelect} />)}</div>
+          : <p className="latest-empty">暂无{category}</p>}
+    </section>;
+  })}</div>;
+}
+
 function HomeView({
   items,
   loading,
@@ -375,7 +400,6 @@ function HomeView({
   searchMode: boolean; searchTerm: string; years: number[]; onRequest: () => void; onReset: () => void;
 }) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
-  const featured = !loading && !searchMode ? pickFeaturedItem(items) : undefined;
   const downloadTotal = items.filter((item) => downloadResourceCount(item) > 0).length;
   const vipTotal = items.filter((item) => item.access !== "免费").length;
 
@@ -412,7 +436,6 @@ function HomeView({
         </div>
       </div> : null}
 
-      <Spotlight item={featured} onSelect={onSelect} />
 
       <div className="section-title">
         <div>
@@ -525,11 +548,11 @@ export default function App() {
       <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)} items={items} onSelect={openFilm}
         onNotice={() => setBoardOpen(true)} onProfile={() => setProfileOpen(true)} onRequests={() => requestFilm()}
         onLogout={() => { setAuthToken(""); clearSession(); }} />
-      <NoticeBoard />
       {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={refreshLibrary}>重试</button></div> : null}
       {selected ? <DetailView key={selected.id} item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={back} onSelectRelated={openFilm} />
         : missing ? <section className="catalog-not-found"><h1>影视不存在</h1><p>该影视不存在或已经删除。</p><button type="button" className="primary-action" onClick={() => handleNav("首页")}><Home size={16} />返回首页</button></section>
         : loading && pathname !== "/" ? <div className="empty-state">正在读取影视详情…</div>
+        : catalog.filters.category === "首页" && !catalog.query ? <LatestHome items={items} loading={loading} onSelect={openFilm} onCategory={handleNav} />
         : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
             filters={catalog.filters} setFilters={setFilters} onSelect={openFilm} searchMode={Boolean(catalog.query)} searchTerm={catalog.query} years={years}
             onReset={() => setFilters({ ...defaultFilters, category: catalog.filters.category })} onRequest={() => requestFilm(catalog.query)} />}

@@ -40,6 +40,26 @@ try {
   assert.equal(await page.getByRole("button", { name: "后台管理" }).count(), 0);
   assert.equal(await page.locator("video").count(), 0);
   await capture(page, "home-desktop.png");
+  assert.equal(await page.locator(".latest-category").count(), 4);
+  assert.equal(await page.locator(".filters, .spotlight, .notice-board").count(), 0);
+  const preview = await context.newPage();
+  preview.on("pageerror", (error) => errors.push(error.message));
+  const template = (await (await fetch(api.base + "/api/media")).json()).items[0];
+  await preview.route("**/api/media", (route) => route.fulfill({ json: { items: ["电视剧", "电影", "综艺", "动漫"].flatMap((category) => Array.from({ length: 24 }, (_, index) => ({ ...template, id: `${category}-${index}`, title: `${category}测试${index + 1}`, category, updatedAt: new Date(Date.UTC(2026, 9, 1, index)).toISOString() }))) } }));
+  await preview.goto(base);
+  for (const width of [1440, 390]) {
+    await preview.setViewportSize({ width, height: 1000 });
+    await preview.waitForFunction(() => [...document.querySelectorAll(".latest-media-grid")].every((grid) => {
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
+      return grid.children.length === columns * 2;
+    }) && document.querySelectorAll(".latest-media-grid").length === 4);
+    const positions = await preview.locator(".latest-media-grid").first().locator(".media-card").evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
+    assert.equal(new Set(positions).size, 2);
+    await checkOverflow(preview, `latest homepage ${width}`);
+    await capture(preview, `latest-home-${width}.png`);
+  }
+  await preview.close();
+  await page.getByRole("region", { name: "电影最新更新", exact: true }).getByRole("button", { name: "更多", exact: true }).click();
   await page.getByLabel("年份筛选", { exact: true }).selectOption("2024");
   await page.getByLabel("评分筛选", { exact: true }).selectOption("8");
   await page.getByLabel("资源状态筛选", { exact: true }).selectOption("有资源");
@@ -81,6 +101,7 @@ try {
   await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
   assert.equal(await page.getByLabel("分类", { exact: true }).inputValue(), "动漫");
   await page.getByRole("button", { name: "站点设置", exact: true }).click();
+  await page.getByLabel("注册提示文案", { exact: true }).fill("限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。");
   await page.getByLabel("启用首页弹窗", { exact: true }).check();
   await page.getByLabel("公告标题", { exact: true }).fill("欢迎来到 Alum4K");
   await page.getByLabel("公告正文", { exact: true }).fill("这里是公告正文。\n管理员可以随时更新。<script>不会执行</script>");
@@ -227,7 +248,8 @@ try {
   await user.getByRole("button", { name: "我知道了", exact: true }).click();
   await user.waitForFunction(() => document.title === "Alum4K 高清资源");
   assert.equal(await user.locator('link[rel="icon"]').getAttribute("href"), logo);
-  await user.getByRole("region", { name: "公告栏" }).getByRole("button", { name: "全部", exact: true }).click();
+  assert.equal(await user.getByRole("region", { name: "公告栏" }).count(), 0);
+  await user.getByRole("button", { name: "站点公告", exact: true }).click();
   await user.getByRole("dialog", { name: "公告栏", exact: true }).waitFor();
   assert.equal(await user.locator(".bulletin-list script").count(), 0);
   assert.equal(await user.locator(".bulletin-item").last().getByRole("link").getAttribute("rel"), "sponsored noreferrer");
@@ -245,6 +267,7 @@ try {
   await user.setViewportSize({ width: 390, height: 844 }); await centered();
   await capture(user, "login-mobile.png");
   await user.getByRole("button", { name: "没有账号？注册用户", exact: true }).click();
+  await user.getByText("限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。", { exact: true }).waitFor();
   await user.getByLabel("用户名", { exact: true }).fill("community_user");
   await user.getByLabel("密码", { exact: true }).fill("community-password");
   await user.getByLabel("邀请码", { exact: true }).fill(invitationCode);
@@ -318,6 +341,11 @@ try {
   assert.deepEqual(errors, []);
   console.log("UI checks passed: invitations/registration/centered login, profiles/avatars/passwords/reset sessions, film requests/admin replies, bulletins/ads/SEO, guest free links/VIP/copy, branding/favicon and four themes on desktop/mobile.");
   console.log(`Screenshots: ${output}`);
+} catch (error) {
+  console.error("Browser errors:", errors);
+  const failedPage = browser?.contexts()[0]?.pages()[0];
+  if (failedPage) { await capture(failedPage, "failure.png"); console.error((await failedPage.locator("body").innerText()).slice(0, 2000)); }
+  throw error;
 } finally {
   await browser?.close();
   if (web.exitCode === null) { const ended = new Promise<void>((resolve) => web.once("exit", () => resolve())); web.kill(); await ended; }

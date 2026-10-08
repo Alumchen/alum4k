@@ -2330,7 +2330,18 @@ html, body { background: var(--page); color: var(--text); }
 :root[data-theme="light"] .editor-footer > span, :root[data-theme="light"] .user-status.vip, :root[data-theme="light"] .top-actions button:first-child { color: #775b1c; }
 
 .auth-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; overflow: auto; z-index: 1000; }
-.site-dialog { margin: 0; min-width: 0; }
+.site-dialog { margin: 0; min-width: 0; align-self: center; height: auto; min-height: 0; }
+.auth-dialog { width: min(380px, 100%); padding: 22px; }
+.auth-dialog .auth-fields { gap: 14px; }
+.auth-dialog .dialog-head { margin-bottom: 16px; }
+.registration-hint { white-space: pre-wrap; overflow-wrap: anywhere; padding: 10px 12px; border-left: 3px solid var(--accent); background: var(--input); border-radius: 4px; }
+.latest-home { max-width: 1880px; margin: 24px auto; min-width: 0; }
+.latest-category { margin-bottom: 36px; }
+.latest-category-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 18px; }
+.latest-category-head h2 { margin: 0; font-size: 24px; }
+.latest-category-head button { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: var(--muted); border: 0; padding: 8px 0 8px 12px; }
+.latest-category-head button svg { transform: rotate(-90deg); }
+.latest-empty { margin: 0; padding: 24px 0; color: var(--muted); border-top: 1px solid var(--border); }
 .auth-switch { color: var(--muted); }
 .auth-switch:hover { color: var(--accent); }
 .media-card { text-decoration: none; }

@@ -1,7 +1,12 @@
 export interface CatalogItem {
   id: string; mediaType: "movie" | "tv"; title: string; originalTitle?: string; aliases?: string[]; tmdbId?: number;
-  category: string; region: string; genres: string[]; year?: number; rating?: number; createdAt?: string; featured?: boolean;
+  category: string; region: string; genres: string[]; year?: number; rating?: number; createdAt?: string; updatedAt?: string; featured?: boolean;
   resources?: { access?: "free" | "vip"; availability?: string }[];
+}
+
+export function latestCategoryItems<T extends CatalogItem>(items: T[], category: string, limit: number): T[] {
+  const timestamp = (item: T) => Date.parse(item.updatedAt || item.createdAt || "") || 0;
+  return items.filter((item) => item.category === category).sort((a, b) => timestamp(b) - timestamp(a) || (b.year ?? 0) - (a.year ?? 0) || a.id.localeCompare(b.id)).slice(0, limit);
 }
 export interface CatalogFilters { category: string; genre: string; access: string; region: string; year: string; rating: string; resources: string; sort: string; }
 export const defaultFilters: CatalogFilters = { category: "首页", genre: "全部", access: "全部", region: "全部", year: "全部", rating: "全部", resources: "全部", sort: "热门" };

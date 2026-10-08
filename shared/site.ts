@@ -17,6 +17,7 @@ export interface SiteSettings {
   announcement: Announcement;
   seo: { title: string; adminTitle: string; description: string; siteUrl?: string };
   bulletins: Bulletin[];
+  registration: { hint: string };
 }
 export interface Bulletin {
   id: string;
@@ -31,5 +32,6 @@ export const defaultSettings: SiteSettings = {
   branding: { name: "Alum4K", logo: "", theme: "dark" },
   announcement: { enabled: false, title: "站点公告", content: "", frequency: "session", revision: "initial" },
   seo: { title: "", adminTitle: "", description: "影视资料、115 网盘与磁力下载资源。", siteUrl: "" },
-  bulletins: []
+  bulletins: [],
+  registration: { hint: "限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。" }
 };
