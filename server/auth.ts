@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import type { Request, Response, NextFunction } from "express";
 import { validateImage } from "./images";
+import { loadSettings } from "./settings";
 import type { Invitation } from "../shared/community";
 
 export interface PublicUser {
@@ -224,15 +225,16 @@ async function createAccount(username: string, password: string, role: "user" | 
     if (users.some((user) => user.username === normalized)) {
       throw new Error("用户名已存在。");
     }
-    const invitations = role === "user" ? await readInvitations() : [];
+    const requiresInvitation = role === "user" && (await loadSettings()).registration.requireInvitation;
+    const invitations = requiresInvitation ? await readInvitations() : [];
     const invitation = invitations.find((item) => item.code === invitationCode?.trim());
-    if (role === "user" && (!/^\d{8}$/.test(invitationCode?.trim() ?? "") || !invitation || invitation.usedAt || invitation.disabled)) throw new Error("邀请码无效、已使用或已停用。");
+    if (requiresInvitation && (!/^\d{8}$/.test(invitationCode?.trim() ?? "") || !invitation || invitation.usedAt || invitation.disabled)) throw new Error("邀请码无效、已使用或已停用。");
 
     const hash = hashPassword(password);
     const user: StoredUser = {
       username: normalized,
       role,
-      vip: role === "admin",
+      vip: true,
       vipUntil: null,
       salt: hash.salt,
       passwordHash: hash.passwordHash,

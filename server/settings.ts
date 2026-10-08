@@ -11,7 +11,7 @@ let pendingWrite: Promise<unknown> = Promise.resolve();
 export async function loadSettings(): Promise<SiteSettings> {
   try {
     const stored = JSON.parse(await readFile(settingsFile, "utf-8"));
-    return { branding: { ...defaultSettings.branding, ...stored.branding }, announcement: { ...defaultSettings.announcement, ...stored.announcement }, seo: { ...defaultSettings.seo, ...stored.seo }, bulletins: stored.bulletins ?? [], registration: { ...defaultSettings.registration, ...stored.registration } };
+    return { branding: { ...defaultSettings.branding, ...stored.branding }, announcement: { ...defaultSettings.announcement, ...stored.announcement }, seo: { ...defaultSettings.seo, ...stored.seo }, bulletins: stored.bulletins ?? [], registration: { ...defaultSettings.registration, ...stored.registration, requireInvitation: typeof stored.registration?.requireInvitation === "boolean" ? stored.registration.requireInvitation : defaultSettings.registration.requireInvitation } };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return structuredClone(defaultSettings);
     throw error;
@@ -30,10 +30,13 @@ async function persistSettings(input: unknown) {
   const settings = await loadSettings();
   if (payload.registration !== undefined) {
     const raw = payload.registration;
-    if (!raw || typeof raw !== "object" || Array.isArray(raw) || typeof (raw as { hint?: unknown }).hint !== "string") throw new Error("注册提示配置不正确。");
-    const hint = (raw as { hint: string }).hint.trim();
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("注册配置不正确。");
+    const registration = raw as { hint?: unknown; requireInvitation?: unknown };
+    if (registration.hint !== undefined && typeof registration.hint !== "string") throw new Error("注册提示需为文本。");
+    if (registration.requireInvitation !== undefined && typeof registration.requireInvitation !== "boolean") throw new Error("注册邀请码开关需为开启或关闭。");
+    const hint = registration.hint === undefined ? settings.registration.hint : registration.hint.trim();
     if (hint.length > 500 || /[\x00-\x08\x0b\x0c\x0e-\x1f]/.test(hint)) throw new Error("注册提示最多 500 字，不能包含控制字符。");
-    settings.registration = { hint };
+    settings.registration = { hint, requireInvitation: registration.requireInvitation === undefined ? settings.registration.requireInvitation : registration.requireInvitation };
   }
   if (payload.branding) {
     const raw = payload.branding;

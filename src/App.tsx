@@ -238,7 +238,7 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
       {mode === "register" && settings.registration.hint ? <p className="registration-hint">{settings.registration.hint}</p> : null}
       <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" required maxLength={20} /></label>
       <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} maxLength={128} /></label>
-      {mode === "register" ? <label>邀请码<input required inputMode="numeric" pattern="[0-9]{8}" minLength={8} maxLength={8} value={invitationCode} onChange={(event) => setInvitationCode(event.target.value.replace(/\D/g, ""))} autoComplete="off" /></label> : null}
+      {mode === "register" && settings.registration.requireInvitation !== false ? <label>邀请码<input required inputMode="numeric" pattern="[0-9]{8}" minLength={8} maxLength={8} value={invitationCode} onChange={(event) => setInvitationCode(event.target.value.replace(/\D/g, ""))} autoComplete="off" /></label> : null}
       {message ? <p className="form-error" role="alert">{message}</p> : null}
       <button className="primary-action" type="submit" disabled={loading}>{loading ? "处理中…" : mode === "login" ? "登录" : "注册"}</button>
       <button className="auth-switch" type="button" disabled={loading} onClick={() => { setMode(mode === "login" ? "register" : "login"); setPassword(""); setMessage(""); }}>

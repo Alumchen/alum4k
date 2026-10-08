@@ -24,6 +24,7 @@ before(async () => {
   api = await startTestApi();
   adminToken = (await request("/api/auth/login", "POST", { username: "admin", password: adminPassword })).body.token;
   userToken = (await request("/api/auth/register", "POST", { username: "normal_user", password: "test-password", invitationCode: await invite() })).body.token;
+  await request("/api/admin/users/normal_user/vip", "PUT", { vip: false }, adminToken);
 });
 after(async () => { await api?.close(); });
 
@@ -42,6 +43,36 @@ test("registration hint defaults, persists, validates and requires administrator
   assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "x".repeat(501) } }, adminToken)).status, 400);
   assert.equal((await request("/api/admin/settings", "PUT", { registration: [] }, adminToken)).status, 400);
   assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "" } }, adminToken)).status, 200);
+});
+
+test("registration invitation policy is server-owned and new members receive resource access", async () => {
+  const before = (await request("/api/settings")).body.registration;
+  assert.equal(before.requireInvitation, true);
+  const account = { username: "open_member", password: "test-password" };
+  assert.equal((await request("/api/auth/register", "POST", { ...account, requireInvitation: false, vip: true })).status, 400);
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { requireInvitation: false } }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/settings", "PUT", { registration: { requireInvitation: "false" } }, adminToken)).status, 400);
+  const code = await invite();
+  try {
+    assert.equal((await request("/api/admin/settings", "PUT", { registration: { requireInvitation: false } }, adminToken)).status, 200);
+    assert.equal((await request("/api/settings")).body.registration.hint, before.hint);
+    await request("/api/admin/settings", "PUT", { registration: { hint: before.hint } }, adminToken);
+    assert.equal((await request("/api/settings")).body.registration.requireInvitation, false);
+    const member = await request("/api/auth/register", "POST", { ...account, role: "admin" });
+    assert.equal(member.status, 201); assert.equal(member.body.user.vip, true); assert.equal(member.body.user.vipUntil, null); assert.equal(member.body.user.role, "user");
+    const movie = (await request("/api/media/test-movie", "GET", undefined, member.body.token)).body.item;
+    assert.equal(movie.resources[0].url, panUrl); assert.equal(movie.resources[1].url, magnetUrl);
+    assert.equal((await request("/api/admin/users", "GET", undefined, member.body.token)).status, 403);
+    assert.equal((await request("/api/auth/register", "POST", { username: "ignored_code", password: "test-password", invitationCode: code })).status, 201);
+    const unused = (await request("/api/admin/invitations", "GET", undefined, adminToken)).body.items.find((item: { code: string }) => item.code === code);
+    assert.equal(unused.usedAt, undefined);
+    await request("/api/admin/settings", "PUT", { registration: { requireInvitation: true } }, adminToken);
+    assert.equal((await request("/api/auth/register", "POST", { username: "needs_code", password: "test-password" })).status, 400);
+    const invited = await request("/api/auth/register", "POST", { username: "needs_code", password: "test-password", invitationCode: code });
+    assert.equal(invited.status, 201); assert.equal(invited.body.user.vip, true);
+    assert.equal((await request("/api/auth/login", "POST", account)).body.user.vip, true);
+    assert.equal((await request("/api/auth/me", "GET", undefined, userToken)).body.user.vip, false);
+  } finally { await request("/api/admin/settings", "PUT", { registration: before }, adminToken); }
 });
 
 test("catalog exact aliases, suggestions, compound filters and URL round trips", () => {

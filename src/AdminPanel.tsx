@@ -332,8 +332,9 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <label className="admin-wide-field">后台浏览器标题<input maxLength={80} value={settings.seo.adminTitle} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, adminTitle: event.target.value } })} /></label>
           <label className="admin-wide-field">网站地址<input aria-label="网站地址" type="url" value={settings.seo.siteUrl || ""} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, siteUrl: event.target.value } })} /></label>
           <label className="admin-wide-field">网站介绍<textarea aria-label="网站介绍" rows={3} maxLength={240} value={settings.seo.description} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, description: event.target.value } })} /></label>
-          <h2 className="settings-section-heading"><Users size={18} />注册提示</h2>
-          <label className="admin-wide-field">注册提示文案<textarea aria-label="注册提示文案" rows={3} maxLength={500} value={settings.registration.hint} onChange={(event) => setSettings({ ...settings, registration: { hint: event.target.value } })} /></label>
+          <h2 className="settings-section-heading"><Users size={18} />注册设置</h2>
+          <label className="switch-field"><input type="checkbox" checked={settings.registration.requireInvitation !== false} onChange={(event) => setSettings({ ...settings, registration: { ...settings.registration, requireInvitation: event.target.checked } })} /><span>注册需要邀请码</span></label>
+          <label className="admin-wide-field">注册提示文案<textarea aria-label="注册提示文案" rows={3} maxLength={500} value={settings.registration.hint} onChange={(event) => setSettings({ ...settings, registration: { ...settings.registration, hint: event.target.value } })} /></label>
           <BulletinEditor items={settings.bulletins} onChange={(bulletins) => setSettings((settings) => ({ ...settings, bulletins }))} />
           <h2 className="settings-section-heading"><Bell size={18} />首页公告</h2>
           <label className="switch-field"><input type="checkbox" checked={settings.announcement.enabled} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, enabled: event.target.checked } })} /><span>启用首页弹窗</span></label>
