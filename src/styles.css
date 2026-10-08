@@ -2108,10 +2108,19 @@ button:focus-visible, a:focus-visible { outline: 2px solid #13e5d3; outline-offs
 .download-type-tabs button { display: flex; align-items: center; gap: 7px; min-height: 46px; border: 0; border-bottom: 2px solid transparent; padding: 0 0 10px; background: none; color: #a1aeb3; }
 .download-type-tabs button.active { color: #13e5d3; border-bottom-color: #13e5d3; }
 .download-type-tabs button > span { font-size: 12px; padding: 2px 6px; border-radius: 4px; background: #ffffff0c; }
-.resource-link-row { gap: 20px; }
+.resource-link-row { display: block; padding: 14px 16px; background: transparent; }
 .resource-link-info { min-width: 0; }
-.resource-url-line { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 9px 10px 9px 12px; border: 1px solid #ffffff15; border-radius: 6px; background: #101415; }
-.resource-url-line > a, .resource-plain-text { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); font-size: 13px; text-decoration: none; }
+.resource-url-line { display: flex; align-items: flex-start; gap: 12px; }
+.resource-link-heading { min-width: 0; flex: 1; padding-top: 5px; }
+.resource-link-heading > a, .resource-plain-text { overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); font-size: 14px; font-weight: 500; line-height: 1.7; text-decoration: none; }
+.resource-link-heading > a:hover { color: var(--accent); text-decoration: underline; }
+.resource-link-heading .resource-access { margin: 0 0 0 8px; padding: 2px 5px; vertical-align: middle; white-space: nowrap; }
+.resource-row-tools { display: flex; flex-shrink: 0; align-items: center; gap: 4px; }
+.resource-row-tools .resource-report-button { width: 32px; height: 32px; justify-content: center; padding: 0; }
+.resource-metadata { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 0; margin-top: 7px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.resource-metadata > span { min-width: 0; overflow-wrap: anywhere; }
+.resource-metadata > span + span::before { content: "\00b7"; padding: 0 8px; }
+.resource-meta-extra { white-space: pre-wrap; }
 .copy-link-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 84px; height: 32px; padding: 0 8px; white-space: nowrap; border: 0; border-radius: 4px; color: #13e5d3; background: #13e5d314; }
 .copy-link-button svg { flex-shrink: 0; }
 .resource-open-button { width: fit-content; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; padding: 10px 12px; border-radius: 6px; background: #13e5d3; color: #08211f; font-size: 14px; font-weight: 700; }
@@ -2274,7 +2283,7 @@ html, body { background: var(--page); color: var(--text); }
 .nav-item.active, .nav-item:hover, .tab-button.active, .filter-button.active, .download-type-tabs button.active, .mobile-tabbar button.active { color: var(--accent); }
 .filter-row > span { color: var(--accent); }
 .nav-item.active, .nav-item:hover { background: var(--accent-soft); }
-.search-box, .resource-url-line, .table-poster, .related-list button, .related-poster-fallback { background: var(--input); border-color: var(--border); }
+.search-box, .table-poster, .related-list button, .related-poster-fallback { background: var(--input); border-color: var(--border); }
 .search-box input, .resource-url-line > a, .related-list strong { color: var(--text); }
 .section-title p, .media-meta, .panel-title small, .resource-link-info small, .locked-resource small, .related-list small, .download-type-tabs button, .announcement-content, .auth-fields label, .muted { color: var(--muted); }
 .download-type-tabs, .download-row, .admin-summary, .admin-edit-form, .admin-collect-search, .editor-footer, .admin-table-wrap, .admin-table td, .admin-user-list, .admin-user-row, .editor-resource-heading { border-color: var(--border); }

@@ -1,6 +1,6 @@
-import { Check, Copy, ExternalLink, Flag, Send } from "lucide-react";
+import { Check, Copy, Flag, Send } from "lucide-react";
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { resourceBadges } from "../shared/resources";
+import { resourceDisplayMetadata } from "../shared/resources";
 import { reportReasons } from "../shared/reports";
 import { reportResource } from "./api";
 import { copyText } from "./clipboard";
@@ -9,8 +9,9 @@ import Dialog from "./Dialog";
 import type { DownloadResource } from "./types";
 
 export function ResourceSummary({ resource }: { resource: DownloadResource }) {
-  return <><div className="resource-version-tags">{resourceBadges(resource).map((value) => <span key={value}>{value}</span>)}</div>
-    {resource.updatedAt ? <small>更新于 {new Date(resource.updatedAt).toLocaleDateString()}</small> : null}</>;
+  const metadata = resourceDisplayMetadata(resource);
+  const extras = [resource.code ? `提取码：${resource.code}` : "", resource.subtitles ? `字幕：${resource.subtitles}` : "", resource.audio ? `音轨：${resource.audio}` : "", resource.note].filter(Boolean);
+  return <div className="resource-metadata"><span className="resource-meta-size" title="大小">{metadata.size}</span><span className="resource-meta-quality" title="画质">{metadata.quality}</span><span className="resource-meta-date" title="更新时间">{metadata.updated}</span>{extras.map((value, index) => <span className="resource-meta-extra" key={index}>{value}</span>)}</div>;
 }
 function ReportDialog({ resource, mediaId, onClose }: { resource: DownloadResource; mediaId: string; onClose: () => void }) {
   const [reason, setReason] = useState<typeof reportReasons[number]>("链接失效"); const [note, setNote] = useState(""); const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [sent, setSent] = useState(false);
@@ -30,6 +31,7 @@ function ReportDialog({ resource, mediaId, onClose }: { resource: DownloadResour
 export default function DownloadLink({ resource, mediaId }: { resource: DownloadResource; mediaId: string }) {
   const [copied, setCopied] = useState(false); const [error, setError] = useState(""); const [reportOpen, setReportOpen] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout>>(); const href = resourceHref(resource.url);
+  const name = href && resource.title.trim() && !["115网盘", "磁力链接"].includes(resource.title.trim()) ? resource.title : resource.url;
   useEffect(() => () => clearTimeout(timer.current), []);
   async function copy() {
     setError("");
@@ -37,13 +39,14 @@ export default function DownloadLink({ resource, mediaId }: { resource: Download
     catch (error) { setError(error instanceof Error ? error.message : "复制失败。"); }
   }
   return <div className="download-row resource-link-row">
-    <div className="resource-link-info"><strong>{resource.title}</strong><span className={`resource-access ${resource.access === "free" ? "free" : "vip"}`}>{resource.access === "free" ? "免费" : "VIP"}</span>
-      <ResourceSummary resource={resource} /><small>{[resource.size, resource.note].filter(Boolean).join(" · ")}</small>{resource.code ? <small>提取码：{resource.code}</small> : null}
-      <div className="resource-url-line">{href ? <a href={href} target="_blank" rel="noreferrer" title={resource.url}>{resource.url}</a> : <span className="resource-plain-text">{resource.url}</span>}
+    <div className="resource-link-info">
+      <div className="resource-url-line"><div className="resource-link-heading">{href ? <a href={href} target="_blank" rel="noreferrer" title={resource.url}>{name}</a> : <span className="resource-plain-text">{resource.url}</span>}<span className={`resource-access ${resource.access === "free" ? "free" : "vip"}`}>{resource.access === "free" ? "免费" : "VIP"}</span></div>
+        <div className="resource-row-tools">
         <button type="button" className="copy-link-button" onClick={copy} title={copied ? "已复制" : resource.code ? "复制链接和提取码" : "复制链接"} aria-label={copied ? "已复制链接" : "复制链接"}>{copied ? <Check size={16} /> : <Copy size={16} />}<span>{copied ? "已复制" : "复制"}</span></button>
-      </div>{error ? <small className="form-error" role="alert">{error}</small> : null}
-    </div><div className="resource-actions">{href ? <a className="resource-open-button" href={href} target="_blank" rel="noreferrer"><ExternalLink size={16} />{resource.type === "magnet" ? "磁力下载" : "打开网盘"}</a> : null}
-      <button className="resource-report-button" type="button" onClick={() => setReportOpen(true)}><Flag size={15} />失效反馈</button></div>
+        <button className="resource-report-button" type="button" title="失效反馈" aria-label="失效反馈" onClick={() => setReportOpen(true)}><Flag size={15} /></button></div>
+      </div><ResourceSummary resource={resource} />
+      {error ? <small className="form-error" role="alert">{error}</small> : null}
+    </div>
     {reportOpen ? <ReportDialog resource={resource} mediaId={mediaId} onClose={() => setReportOpen(false)} /> : null}
   </div>;
 }

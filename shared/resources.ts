@@ -23,3 +23,12 @@ export function normalizeResourceDetails(input: ResourceDetails): ResourceDetail
 export function resourceBadges(resource: ResourceDetails) {
   return [resource.resolution, resource.dynamicRange, resource.videoCodec, resource.subtitles ? `字幕：${resource.subtitles}` : "", resource.audio ? `音轨：${resource.audio}` : ""].filter(Boolean) as string[];
 }
+
+export function resourceDisplayMetadata(resource: ResourceDetails & { size?: string }) {
+  const date = resource.updatedAt ? new Date(resource.updatedAt) : undefined;
+  return {
+    size: resource.size?.trim() || "大小未填写",
+    quality: [resource.resolution, resource.dynamicRange, resource.videoCodec].filter(Boolean).join(" / ") || "画质未填写",
+    updated: date && Number.isFinite(date.getTime()) ? new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(date) : "更新时间未记录"
+  };
+}

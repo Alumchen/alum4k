@@ -6,6 +6,7 @@ import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesE
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
 import { cleanResources } from "../src/ResourceEditor";
+import { resourceDisplayMetadata } from "../shared/resources";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
@@ -87,6 +88,11 @@ test("plain URLs and copied share text need no separator format", () => {
   assert.equal(extractDownloadLink("magnet", `下载地址 ${magnetUrl}`).url, magnetUrl);
   assert.throws(() => extractDownloadLink("115", `${panUrl}\nhttps://115.com/s/second`));
   assert.throws(() => extractDownloadLink("115", "javascript:alert(1)"));
+});
+
+test("resource display shows size, quality and Shanghai update date with missing-field fallbacks", () => {
+  assert.deepEqual(resourceDisplayMetadata({ size: "122.14 GB", resolution: "2160p / 4K", dynamicRange: "HDR10", videoCodec: "H.265 / HEVC", updatedAt: "2026-10-07T18:00:00Z" }), { size: "122.14 GB", quality: "2160p / 4K / HDR10 / H.265 / HEVC", updated: "2026-10-08" });
+  assert.deepEqual(resourceDisplayMetadata({ updatedAt: "invalid" }), { size: "大小未填写", quality: "画质未填写", updated: "更新时间未记录" });
 });
 
 test("resource input is preserved verbatim without URL format checks", async () => {

@@ -119,7 +119,12 @@ try {
   await page.locator(".media-card").first().waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
   await page.locator(".media-card").filter({ hasText: "验证电影" }).click();
-  await page.getByText("2160p / 4K", { exact: true }).waitFor();
+  await page.locator(".resource-meta-quality").filter({ hasText: "2160p / 4K" }).waitFor();
+  assert.equal(await page.locator(".resource-meta-size").textContent(), "18 GB");
+  assert.match((await page.locator(".resource-meta-date").textContent()) || "", /^\d{4}-\d{2}-\d{2}$/);
+  const linkRect = await page.locator(".resource-url-line").boundingBox();
+  const metadataRect = await page.locator(".resource-metadata").boundingBox();
+  assert.ok(linkRect && metadataRect && metadataRect.y >= linkRect.y + linkRect.height, "metadata must be below the link row");
   await page.getByRole("button", { name: "失效反馈", exact: true }).click();
   await page.getByLabel("反馈说明", { exact: true }).fill("请核验下载链接。");
   await page.getByRole("button", { name: "提交反馈", exact: true }).click();
