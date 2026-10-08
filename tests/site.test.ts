@@ -2,6 +2,8 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { defaultFilters, filterCatalog, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia } from "../shared/catalog";
+import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl } from "../shared/media";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
@@ -22,6 +24,32 @@ before(async () => {
   userToken = (await request("/api/auth/register", "POST", { username: "normal_user", password: "test-password", invitationCode: await invite() })).body.token;
 });
 after(async () => { await api?.close(); });
+
+test("catalog exact aliases, suggestions, compound filters and URL round trips", () => {
+  const movie = { id: "中文片名", mediaType: "movie" as const, title: "测试电影", originalTitle: "Test Movie", aliases: ["旧译名"], category: "电影", region: "内地", genres: ["喜剧"], year: 2024, rating: 8.5, resources: [{ access: "free" as const, availability: "available" }, { access: "vip" as const }] };
+  const empty = { ...movie, id: "empty", title: "无资源", aliases: [], originalTitle: "Empty", rating: 6, resources: [] };
+  assert.equal(matchesExact(movie, "《旧译名》"), true); assert.equal(matchesExact(movie, "test.movie"), true); assert.equal(matchesExact(movie, "测试"), false);
+  assert.equal(suggestMedia([movie, empty], "旧译")[0].id, movie.id);
+  const filters = { ...defaultFilters, category: "电影", access: "免费", genre: "喜剧", region: "内地", year: "2024", rating: "8", resources: "有资源" };
+  assert.deepEqual(filterCatalog([movie, empty], filters, "旧译名").map((item) => item.id), [movie.id]);
+  assert.equal(filterCatalog([movie, empty], { ...filters, rating: "9" }).length, 0);
+  assert.equal(filterCatalog([{ ...movie, resources: [{ access: "free", availability: "invalid" }] }], filters).length, 0);
+  assert.equal(filterCatalog([empty], { ...defaultFilters, resources: "待补资源" }).length, 1);
+  assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "旧译名"), "https://example.com")), { filters, query: "旧译名" });
+  assert.deepEqual(parseDetailPath(mediaPath(movie)), { id: movie.id, mediaType: "movie" });
+  assert.equal(parseDetailPath("/movie/%ZZ"), null); assert.equal(parseDetailPath("/movie/a%2Fb"), null);
+});
+
+test("Nginx route upgrade is idempotent and preserves TLS, custom ports and redirects", () => {
+  const config = `# server { in comment\nserver {\n listen 1023;\n server_name www.alum4k.com;\n location /api/ { proxy_pass http://127.0.0.1:5188/api/; }\n location / { try_files $uri $uri/ /index.html; }\n}\nserver {\n listen 443 ssl;\n ssl_certificate /etc/letsencrypt/live/alum4k/fullchain.pem;\n if ($host = "www.alum4k.com") { set $test "brace } inside string"; }\n server_name www.alum4k.com;\n}\nserver { listen 80; return 301 https://$host$request_uri; }\n`;
+  const upgraded = addPublicPageLocations(config, 5174);
+  assert.equal((upgraded.match(/# alum4k-public-pages:start/g) ?? []).length, 3);
+  assert.ok(upgraded.includes("listen 1023;")); assert.ok(upgraded.includes("listen 443 ssl;")); assert.ok(upgraded.includes("ssl_certificate /etc/letsencrypt/live/alum4k/fullchain.pem;")); assert.ok(upgraded.includes("return 301 https://$host$request_uri;"));
+  assert.ok(upgraded.includes("proxy_pass http://127.0.0.1:5188;")); assert.equal(addPublicPageLocations(upgraded, 5174), upgraded);
+  assert.throws(() => addPublicPageLocations("server { location /movie/ { return 200; } }"));
+  assert.throws(() => addPublicPageLocations('server { set $bad "unterminated; }'));
+  assert.throws(() => addPublicPageLocations("server {", 5174)); assert.throws(() => addPublicPageLocations("server {}", 0));
+});
 
 test("automatic classification distinguishes animation, kids, documentaries and variety", () => {
   assert.equal(classifyMedia({ mediaType: "movie", genres: ["动画"] }), "动漫");
@@ -220,7 +248,7 @@ test("registered users submit private film requests and administrators respond",
 
 test("bulletins and SEO metadata persist safely in production HTML", async () => {
   const before = (await request("/api/settings")).body;
-  const seo = { title: 'Alum4K <影视> "目录"', adminTitle: "Alum4K 后台", description: "115 & 磁力下载资源介绍" };
+  const seo = { title: 'Alum4K <影视> "目录"', adminTitle: "Alum4K 后台", description: "115 & 磁力下载资源介绍", siteUrl: "" };
   const bulletins = [{ id: "ad", type: "advertisement", enabled: true, title: "合作信息", content: "<script>不会执行</script>", image: "", link: "https://example.com/" }];
   assert.equal((await request("/api/admin/settings", "PUT", { seo, bulletins }, userToken)).status, 403);
   assert.equal((await request("/api/admin/settings", "PUT", { seo, bulletins }, adminToken)).status, 200);
@@ -269,4 +297,58 @@ test("branding persists with legacy announcements and rejects invalid themes or 
   assert.deepEqual((await request("/api/settings")).body.branding, branding);
   await request("/api/admin/settings", "PUT", { announcement: { ...before.announcement, title: "仅更新公告" } }, adminToken);
   assert.deepEqual((await request("/api/settings")).body.branding, branding);
+});
+
+test("resource metadata survives saves and verification dates are server-owned", async () => {
+  const input = { id: "versioned", title: "版本测试", mediaType: "movie", aliases: ["资源测试旧名"], resources: [{ id: "free-version", type: "115", title: "4K 版本", url: panUrl, code: "vcode", access: "free", resolution: "2160p / 4K", dynamicRange: "Dolby Vision", videoCodec: "H.265 / HEVC", subtitles: "简繁中字", audio: "普通话 / DTS-HD MA", size: "40 GB", availability: "available", verifiedAt: "2099-01-01" }] };
+  const saved = await request("/api/admin/media", "POST", input, adminToken);
+  assert.equal(saved.status, 201);
+  const resource = saved.body.item.resources[0];
+  assert.equal(resource.resolution, "2160p / 4K"); assert.equal(resource.audio, "普通话 / DTS-HD MA"); assert.ok(resource.updatedAt);
+  assert.ok(Date.parse(resource.verifiedAt) <= Date.now());
+  const same = await request("/api/admin/media/versioned", "PUT", saved.body.item, adminToken);
+  assert.equal(same.body.item.resources[0].updatedAt, resource.updatedAt); assert.equal(same.body.item.resources[0].verifiedAt, resource.verifiedAt);
+  assert.equal((await request("/api/media/versioned")).body.item.resources[0].code, "vcode");
+  for (const patch of [{ resolution: "bad" }, { dynamicRange: "bad" }, { availability: "bad" }, { audio: "x".repeat(161) }]) {
+    assert.equal((await request("/api/admin/media", "POST", { ...input, resources: [{ ...input.resources[0], ...patch }] }, adminToken)).status, 400);
+  }
+  assert.equal((await request("/api/media?q=资源测试旧名&exact=1")).body.items[0].id, "versioned");
+  assert.equal((await request("/api/media?q=资源测试&exact=1")).body.items.length, 0);
+});
+
+test("guest feedback is limited to free resources, deduplicated and handled by admins", async () => {
+  const input = { reason: "链接失效", note: "网盘提示分享取消", reporter: "admin" };
+  assert.equal((await request("/api/media/test-movie/resources/pan/reports", "POST", input)).status, 400);
+  const saved = await request("/api/media/versioned/resources/free-version/reports", "POST", input);
+  assert.equal(saved.status, 201); assert.equal(saved.body.item.reporter, "游客"); assert.equal(saved.body.item.linkHash, undefined); assert.equal(saved.body.item.fingerprint, undefined);
+  assert.equal((await request("/api/media/versioned/resources/free-version/reports", "POST", input)).status, 400);
+  assert.equal((await request("/api/admin/resource-reports")).status, 401); assert.equal((await request("/api/admin/resource-reports", "GET", undefined, userToken)).status, 403);
+  assert.equal((await request(`/api/admin/resource-reports/${saved.body.item.id}`, "PUT", { status: "resolved", markInvalid: true }, userToken)).status, 403);
+  assert.equal((await request(`/api/admin/resource-reports/${saved.body.item.id}`, "PUT", { status: "resolved", reply: "已核验，资源失效。", markInvalid: true }, adminToken)).status, 200);
+  const item = (await request("/api/media/versioned")).body.item;
+  assert.equal(item.resources[0].availability, "invalid"); assert.ok(item.resources[0].verifiedAt); assert.equal(item.resources[0].resolution, "2160p / 4K");
+  assert.equal(JSON.stringify((await request("/api/admin/resource-reports", "GET", undefined, adminToken)).body).includes(panUrl), false);
+  const stale = await request("/api/media/versioned/resources/free-version/reports", "POST", input, userToken);
+  assert.equal(stale.status, 201);
+  await request("/api/admin/media/versioned", "PUT", { ...item, resources: [{ ...item.resources[0], url: "https://115.com/s/replacement", availability: "unknown" }] }, adminToken);
+  const changed = await request(`/api/admin/resource-reports/${stale.body.item.id}`, "PUT", { status: "resolved", markInvalid: true }, adminToken);
+  assert.equal(changed.status, 400); assert.match(changed.body.message, /链接已被更换/);
+  assert.equal((await request("/api/media/versioned")).body.item.resources[0].availability, "unknown");
+});
+
+test("independent detail HTML contains unique SEO and public synopsis but no private links", async () => {
+  const settings = (await request("/api/settings")).body;
+  const siteUrl = "https://www.alum4k.com";
+  await request("/api/admin/settings", "PUT", { seo: { ...settings.seo, siteUrl } }, adminToken);
+  const response = await fetch(api.base + "/movie/test-movie"); const html = await response.text();
+  assert.equal(response.status, 200); assert.ok(html.includes("验证电影 (2024)")); assert.ok(html.includes('rel="canonical" href="https://www.alum4k.com/movie/test-movie"'));
+  assert.ok(html.includes("影视资料和下载链接验证。")); assert.ok(html.includes("测试演员")); assert.ok(html.includes('/assets/test.js'));
+  for (const privateValue of [panUrl, magnetUrl, "abcd", "private.invalid/video", "/private/movie.mp4"]) assert.equal(html.includes(privateValue), false);
+  for (const endpoint of ["/movie/missing", "/tv/test-movie", "/movie/test-movie/extra", "/movie/%ZZ"]) assert.equal((await fetch(api.base + endpoint)).status, 404);
+  const missing = await (await fetch(api.base + "/movie/missing")).text(); assert.ok(missing.includes("noindex, follow"));
+  const xml = await (await fetch(api.base + "/sitemap.xml")).text(); assert.ok(xml.includes("<sitemapindex")); assert.ok(xml.includes(siteUrl + "/sitemap-1.xml"));
+  const page = await (await fetch(api.base + "/sitemap-1.xml")).text(); assert.ok(page.includes(siteUrl + "/movie/test-movie")); assert.ok(page.includes("<lastmod>")); assert.equal(page.includes(panUrl), false);
+  assert.equal((await fetch(api.base + "/sitemap-999.xml")).status, 404);
+  const robots = await (await fetch(api.base + "/robots.txt")).text(); assert.ok(robots.includes("Disallow: /admin")); assert.ok(robots.includes("Sitemap: " + siteUrl + "/sitemap.xml"));
+  assert.equal((await request("/api/admin/settings", "PUT", { seo: { ...settings.seo, siteUrl: "javascript:alert(1)" } }, adminToken)).status, 400);
 });

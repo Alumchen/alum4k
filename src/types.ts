@@ -10,7 +10,7 @@ export interface MediaSource {
   directUrl?: string;
 }
 
-export interface DownloadResource {
+export interface DownloadResource extends ResourceDetails {
   id: string;
   type: DownloadResourceType;
   title: string;
@@ -20,6 +20,7 @@ export interface DownloadResource {
   note?: string;
   access?: "free" | "vip";
 }
+import type { ResourceDetails } from "../shared/resources";
 
 export interface ResourceCheckResult {
   ok: boolean;
@@ -61,6 +62,7 @@ export interface MediaItem {
   mediaType: MediaType;
   title: string;
   originalTitle?: string;
+  aliases?: string[];
   year?: number;
   category: string;
   categoryMode?: "auto" | "manual";

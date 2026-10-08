@@ -15,7 +15,7 @@ export interface Announcement {
 export interface SiteSettings {
   branding: { name: string; logo: string; theme: SiteTheme };
   announcement: Announcement;
-  seo: { title: string; adminTitle: string; description: string };
+  seo: { title: string; adminTitle: string; description: string; siteUrl?: string };
   bulletins: Bulletin[];
 }
 export interface Bulletin {
@@ -30,6 +30,6 @@ export interface Bulletin {
 export const defaultSettings: SiteSettings = {
   branding: { name: "Alum4K", logo: "", theme: "dark" },
   announcement: { enabled: false, title: "站点公告", content: "", frequency: "session", revision: "initial" },
-  seo: { title: "", adminTitle: "", description: "影视资料、115 网盘与磁力下载资源。" },
+  seo: { title: "", adminTitle: "", description: "影视资料、115 网盘与磁力下载资源。", siteUrl: "" },
   bulletins: []
 };

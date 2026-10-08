@@ -37,7 +37,9 @@ async function persistSettings(input: unknown) {
   }
   if (payload.seo) {
     const text = (key: string, max: number) => { const value = typeof payload.seo![key] === "string" ? String(payload.seo![key]).trim() : ""; if (value.length > max || /[\x00-\x1f]/.test(value)) throw new Error("浏览器标题或站点介绍超出长度限制或含控制字符。"); return value; };
-    settings.seo = { title: text("title", 80), adminTitle: text("adminTitle", 80), description: text("description", 240) };
+    let siteUrl = typeof payload.seo.siteUrl === "string" ? payload.seo.siteUrl.trim() : settings.seo.siteUrl ?? "";
+    if (siteUrl) { const url = new URL(siteUrl); if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.pathname !== "/" || url.search || url.hash) throw new Error("网站地址应为 HTTP/HTTPS 域名或 IP，不含路径和参数。"); siteUrl = url.origin; }
+    settings.seo = { title: text("title", 80), adminTitle: text("adminTitle", 80), description: text("description", 240), siteUrl };
   }
   if (payload.bulletins !== undefined) {
     if (!Array.isArray(payload.bulletins) || payload.bulletins.length > 20) throw new Error("公告栏最多发布 20 条内容。");

@@ -5,9 +5,9 @@ import { requestStatusLabels } from "../shared/community";
 import type { FilmRequest } from "./types";
 import Dialog from "./Dialog";
 
-export default function RequestsDialog({ onClose }: { onClose: () => void }) {
+export default function RequestsDialog({ onClose, initialTitle = "" }: { onClose: () => void; initialTitle?: string }) {
   const [items, setItems] = useState<FilmRequest[]>([]); const [loading, setLoading] = useState(true);
-  const [title, setTitle] = useState(""); const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
+  const [title, setTitle] = useState(initialTitle); const [mediaType, setMediaType] = useState<"movie" | "tv">("movie");
   const [year, setYear] = useState(""); const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [notice, setNotice] = useState("");
   async function load() { setLoading(true); setError(""); try { setItems(await fetchRequests()); } catch (error) { setError(error instanceof Error ? error.message : "加载失败。"); } finally { setLoading(false); } }

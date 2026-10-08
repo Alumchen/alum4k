@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { classifyMedia, isDownloadUrl } from "../shared/media";
 import type { DownloadResource, MediaItem } from "./types";
+import { normalizeResourceDetails } from "../shared/resources";
 
 const libraryFile = path.resolve(process.cwd(), "data", "library.json");
 let pendingWrite: Promise<unknown> = Promise.resolve();
@@ -48,6 +49,7 @@ function normalizeResources(input: Partial<MediaItem>): DownloadResource[] {
     while (seenIds.has(id)) id = `${preferredId}-${suffix++}`;
     seenIds.add(id);
     return [{
+      ...normalizeResourceDetails(resource),
       id,
       type: resource.type,
       title: cleanText(resource.title, resource.type === "magnet" ? "磁力链接" : "115网盘"),
@@ -118,6 +120,7 @@ export function normalizeMediaItem(input: Partial<MediaItem>, existingIds: strin
     mediaType,
     title,
     originalTitle: cleanText(input.originalTitle),
+    aliases: [...new Set(ensureArray(input.aliases))].filter((value) => value !== title).slice(0, 20).map((value) => value.slice(0, 100)),
     year: cleanNumber(input.year),
     category: categoryMode === "auto" ? classifyMedia({ mediaType, genres }) : cleanText(input.category, classifyMedia({ mediaType, genres })),
     categoryMode,
@@ -148,6 +151,15 @@ function saveItem(items: MediaItem[], input: Partial<MediaItem>, currentId?: str
   );
   if (currentId && !existing) throw new Error("这个影视条目已被删除，请刷新媒体库。");
   const next = normalizeMediaItem({ ...input, id: existing?.id ?? input.id, createdAt: existing?.createdAt ?? input.createdAt }, items.map((item) => item.id), existing?.id);
+  next.resources = next.resources?.map((resource) => {
+    const old = existing ? normalizeResources(existing).find((entry) => entry.id === resource.id) : undefined;
+    const fields = ["url", "code", "title", "size", "note", "access", "resolution", "dynamicRange", "videoCodec", "subtitles", "audio", "availability"] as const;
+    const unchanged = old && fields.every((key) => (old[key] ?? "") === (resource[key] ?? ""));
+    const sameLink = old?.url === resource.url;
+    const checked = resource.availability !== "unknown";
+    return { ...resource, updatedAt: unchanged ? old.updatedAt ?? next.updatedAt : next.updatedAt,
+      verifiedAt: checked ? sameLink && old?.availability === resource.availability ? old.verifiedAt ?? next.updatedAt : next.updatedAt : undefined };
+  });
   const index = existing ? items.indexOf(existing) : -1;
   if (index >= 0) items[index] = next;
   else items.unshift(next);
@@ -159,6 +171,19 @@ export async function upsertMedia(input: Partial<MediaItem>, currentId?: string)
     const next = saveItem(items, input, currentId);
     await saveRawLibrary(items);
     return next;
+  });
+}
+
+export function markResourceInvalid(mediaId: string, resourceId: string, expectedHash: string) {
+  return mutateLibrary(async (items) => {
+    const item = items.find((entry) => entry.id === mediaId);
+    const resources = item ? normalizeResources(item) : [];
+    const resource = resources.find((entry) => entry.id === resourceId);
+    if (!item || !resource) throw new Error("资源已删除，可直接忽略这条反馈。");
+    if (crypto.createHash("sha256").update(resource.url).digest("hex") !== expectedHash) throw new Error("链接已被更换，请重新核验后处理反馈。");
+    const time = new Date().toISOString(); resource.availability = "invalid"; resource.verifiedAt = time; resource.updatedAt = time; item.updatedAt = time;
+    item.resources = resources;
+    await saveRawLibrary(items);
   });
 }
 

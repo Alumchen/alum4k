@@ -1,3 +1,4 @@
+import type { ResourceDetails } from "../shared/resources";
 export type MediaType = "movie" | "tv";
 export type SourceType = "pan115" | "alist" | "direct";
 export type DownloadResourceType = "115" | "magnet";
@@ -11,7 +12,7 @@ export interface MediaSource {
   directUrl?: string;
 }
 
-export interface DownloadResource {
+export interface DownloadResource extends ResourceDetails {
   id: string;
   type: DownloadResourceType;
   title: string;
@@ -35,6 +36,7 @@ export interface MediaItem {
   mediaType: MediaType;
   title: string;
   originalTitle?: string;
+  aliases?: string[];
   year?: number;
   category: string;
   categoryMode?: "auto" | "manual";

@@ -164,7 +164,16 @@ fi
 if [[ ! -e "${NGINX_ENABLED}" && ! -L "${NGINX_ENABLED}" ]]; then
   ${SUDO} ln -s "${NGINX_AVAILABLE}" "${NGINX_ENABLED}"
 fi
-${SUDO} nginx -t
+if ! ${SUDO} node scripts/public-pages.mjs "${NGINX_AVAILABLE}" "${API_PORT}" || ! ${SUDO} nginx -t; then
+  if [[ -f "${BACKUP_DIR}/${APP_NAME}.conf" ]]; then
+    ${SUDO} cp -a "${BACKUP_DIR}/${APP_NAME}.conf" "${NGINX_AVAILABLE}"
+  fi
+  if [[ -d "${BACKUP_DIR}/dist" ]]; then
+    cp -a "${BACKUP_DIR}/dist/." dist/
+  fi
+  echo "Public-route configuration failed. Previous configuration and frontend restored; services were not restarted."
+  exit 1
+fi
 ${SUDO} systemctl restart "${APP_NAME}"
 ${SUDO} systemctl reload nginx
 

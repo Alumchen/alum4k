@@ -1,4 +1,5 @@
 import type { AuthState, FilmRequest, Invitation, MediaItem, MediaType, SiteSettings, User } from "./types";
+import type { ResourceReport } from "../shared/reports";
 
 const TOKEN_KEY = "alum4k_token";
 
@@ -85,6 +86,14 @@ export async function fetchMedia(query = "", exact = false) {
   const suffix = params.toString() ? `?${params.toString()}` : "";
   const payload = await readJson<{ items: MediaItem[] }>(`/api/media${suffix}`);
   return payload.items;
+}
+export async function fetchMediaItem(id: string) { return (await readJson<{ item: MediaItem }>(`/api/media/${encodeURIComponent(id)}`)).item; }
+export async function reportResource(mediaId: string, resourceId: string, reason: string, note: string) {
+  return (await writeJson<{ item: ResourceReport }>(`/api/media/${encodeURIComponent(mediaId)}/resources/${encodeURIComponent(resourceId)}/reports`, "POST", { reason, note })).item;
+}
+export async function fetchResourceReports() { return (await readJson<{ items: ResourceReport[] }>("/api/admin/resource-reports")).items; }
+export async function updateResourceReport(id: string, status: ResourceReport["status"], reply: string, markInvalid = false) {
+  return (await writeJson<{ item: ResourceReport }>(`/api/admin/resource-reports/${encodeURIComponent(id)}`, "PUT", { status, reply, markInvalid })).item;
 }
 
 export async function searchTmdb(query: string) {

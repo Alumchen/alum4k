@@ -11,8 +11,8 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     document.documentElement.dataset.theme = settings.branding.theme;
     const admin = /^\/admin(?:\/|$)/.test(location.pathname);
     const title = settings.seo.title || settings.branding.name;
-    document.title = admin ? settings.seo.adminTitle || `${title} · 管理后台` : title;
-    for (const [name, content] of [["description", settings.seo.description], ["robots", admin ? "noindex, nofollow" : "index, follow"]]) {
+    if (admin) document.title = settings.seo.adminTitle || `${title} · 管理后台`;
+    for (const [name, content] of admin ? [["description", settings.seo.description], ["robots", "noindex, nofollow"]] : []) {
       let meta = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
       if (!meta) { meta = document.createElement("meta"); meta.name = name; document.head.append(meta); }
       meta.content = content;

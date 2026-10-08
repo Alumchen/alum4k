@@ -35,7 +35,11 @@ import RequestsDialog from "./RequestsDialog";
 import NoticeBoard, { BoardDialog } from "./NoticeBoard";
 
 import type { DownloadResource, MediaItem, User, Announcement } from "./types";
-import { Check, Copy, ExternalLink, Link2 } from "lucide-react";
+import { Link2, Share2 } from "lucide-react";
+import DownloadLink, { ResourceSummary } from "./ResourceDownloads";
+import SearchBox from "./SearchBox";
+import usePageSeo from "./usePageSeo";
+import { catalogPath, defaultFilters, filterCatalog, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
 
 const navItems = [
   { label: "首页", icon: Home },
@@ -51,7 +55,7 @@ const navItems = [
 
 const tabs = ["热门", "最新上架", "高分好评"];
 const genreFilters = ["全部", "爱情", "都市", "青春", "奇幻", "武侠", "古装", "科幻", "悬疑", "犯罪", "剧情", "冒险"];
-const accessFilters = ["全部", "免费", "会员", "VIP"];
+const accessFilters = ["全部", "免费", "VIP"];
 const regionFilters = ["全部", "内地", "中国香港", "中国台湾", "美国", "泰国", "英国", "韩国", "日本", "其他"];
 
 function classNames(...values: Array<string | false | undefined>) {
@@ -77,7 +81,7 @@ function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: Media
   const resourceCount = item.resources?.length ?? 0;
 
   return (
-    <button className="media-card" onClick={() => onSelect(item)} type="button">
+    <a className="media-card" href={mediaPath(item)} onClick={(event) => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onSelect(item); }}>
       <div className="media-poster-wrap">
         <PosterImage item={item} />
         <span className={"media-resource-pill"}>
@@ -94,7 +98,7 @@ function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: Media
         <Star size={12} />
         {item.rating ? `评分 ${item.rating}` : item.genres[0] ?? "待评分"}
       </span>
-    </button>
+    </a>
   );
 }
 
@@ -194,18 +198,15 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
   );
 }
 
-function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, onNotice, onProfile, onRequests }: {
+function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, onNotice, onProfile, onRequests, items, onSelect }: {
   query: string; onQuery: (value: string) => void; onSearch: (value: string) => void;
   currentUser: User | null; onOpenAuth: () => void; onLogout: () => void; onNotice?: () => void;
-  onProfile: () => void; onRequests: () => void;
+  onProfile: () => void; onRequests: () => void; items: MediaItem[]; onSelect: (item: MediaItem) => void;
 }) {
   const { settings } = useSite();
   return <header className="topbar">
     <a className="mobile-brand" href="/"><BrandMark /><span>{settings.branding.name}</span></a>
-    <form className="search-box" onSubmit={(event) => { event.preventDefault(); onSearch(query); }}>
-      <input name="query" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="搜索影视名" aria-label="搜索影视名" />
-      <button type="submit" title="搜索" aria-label="搜索"><Search size={20} /></button>
-    </form>
+    <SearchBox items={items} query={query} onQuery={onQuery} onSearch={onSearch} onSelect={onSelect} />
     <div className="top-actions">
       <button type="button" title="求片" aria-label="求片" onClick={onRequests}><Film size={18} /><span>求片</span></button>
       {onNotice ? <button type="button" title="站点公告" onClick={onNotice}><Bell size={18} /></button> : null}
@@ -304,44 +305,17 @@ function vipLabel(user: User) {
   return "普通用户";
 }
 
-function DownloadLink({ resource }: { resource: DownloadResource }) {
-  const [copied, setCopied] = useState(false);
-  const [error, setError] = useState("");
-  const timer = useRef<ReturnType<typeof setTimeout>>();
-  useEffect(() => () => clearTimeout(timer.current), []);
-  async function copy() {
-    setError("");
-    try { await copyText(resource.url); setCopied(true); clearTimeout(timer.current); timer.current = setTimeout(() => setCopied(false), 2000); }
-    catch (error) { setError(error instanceof Error ? error.message : "复制失败。"); }
-  }
-  return <div className="download-row resource-link-row">
-    <div className="resource-link-info">
-      <strong>{resource.title || downloadLabel(resource)}</strong>
-      <span className={`resource-access ${resource.access === "free" ? "free" : "vip"}`}>{resource.access === "free" ? "免费" : "VIP"}</span>
-      <small>{[resource.size, resource.note].filter(Boolean).join(" · ")}</small>
-      {resource.code ? <small>提取码：{resource.code}</small> : null}
-      <div className="resource-url-line">
-        <a href={resource.url} target="_blank" rel="noreferrer" title={resource.url}>{resource.url}</a>
-        <button type="button" className="copy-link-button" onClick={copy} title={copied ? "已复制" : "复制链接"} aria-label={copied ? "已复制链接" : "复制链接"}>
-          {copied ? <Check size={16} /> : <Copy size={16} />}<span>{copied ? "已复制" : "复制"}</span>
-        </button>
-      </div>
-      {error ? <small className="form-error" role="alert">{error}</small> : null}
-    </div>
-    <a className="resource-open-button" href={resource.url} target="_blank" rel="noreferrer"><ExternalLink size={16} />{resource.type === "magnet" ? "磁力下载" : "打开网盘"}</a>
-  </div>;
-}
-
 function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSelectRelated }: {
   item: MediaItem; currentUser: User | null; relatedItems: MediaItem[]; onOpenAuth: () => void;
   onBack: () => void; onSelectRelated: (item: MediaItem) => void;
 }) {
   const resources = item.resources ?? [];
+  const [shareMessage, setShareMessage] = useState("");
   const [resourceType, setResourceType] = useState<"115" | "magnet">("115");
   useEffect(() => { setResourceType(resources.some((resource) => resource.type === "115") ? "115" : "magnet"); }, [item.id]);
   const visible = resources.filter((resource) => resource.type === resourceType);
   return <section className="detail-view">
-    <button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button>
+    <div className="detail-toolbar"><button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button><button type="button" className="share-film" title="复制影视网址" onClick={async () => { try { await copyText(location.origin + mediaPath(item)); setShareMessage("影视网址已复制"); } catch (error) { setShareMessage(error instanceof Error ? error.message : "复制失败。"); } }}><Share2 size={16} />分享</button>{shareMessage ? <span role="status">{shareMessage}</span> : null}</div>
     <div className="detail-hero">
       {item.backdropPath ? <img src={item.backdropPath} alt="" /> : null}<div className="detail-shade" />
       <div className="detail-info">
@@ -365,15 +339,15 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
             {type === "115" ? <Download size={16} /> : <Link2 size={16} />}{type === "115" ? "115网盘" : "磁力链接"}<span>{resources.filter((resource) => resource.type === type).length}</span>
           </button>)}
         </div>
-        {visible.length ? <div className="download-list">{visible.map((resource) => resource.url ? <DownloadLink key={resource.id} resource={resource} /> : <div className="download-row locked-resource" key={resource.id}><div><strong>{resource.title || downloadLabel(resource)}</strong><span className="resource-access vip">VIP</span><small>{currentUser ? "VIP 会员可查看此链接" : "登录并开通 VIP 后可查看此链接"}</small></div>{!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : <Crown size={22} />}</div>)}</div>
+        {visible.length ? <div className="download-list">{visible.map((resource) => resource.url ? <DownloadLink key={resource.id} resource={resource} mediaId={item.id} /> : <div className="download-row locked-resource" key={resource.id}><div><strong>{resource.title || downloadLabel(resource)}</strong><span className="resource-access vip">VIP</span><ResourceSummary resource={resource} /><small>{currentUser ? "VIP 会员可查看此链接" : "登录并开通 VIP 后可查看此链接"}</small></div>{!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : <Crown size={22} />}</div>)}</div>
           : <div className="resource-empty"><Download size={26} /><span>暂无{resourceType === "115" ? "115网盘" : "磁力"}链接</span></div>}
       </section>
       <aside className="episode-panel">
         <div className="panel-title"><span>同类推荐</span><small>{relatedItems.length} 部</small></div>
-        <div className="related-list">{relatedItems.map((related) => <button key={related.id} type="button" onClick={() => onSelectRelated(related)}>
+        <div className="related-list">{relatedItems.map((related) => <a key={related.id} href={mediaPath(related)} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onSelectRelated(related); }}>
           {related.posterPath ? <img src={related.posterPath} alt="" loading="lazy" /> : <span className="related-poster-fallback"><Film size={18} /></span>}
           <span><strong>{related.title}</strong><small>{related.year ?? "未知年份"} · {related.category}</small></span>
-        </button>)}</div>
+        </a>)}</div>
       </aside>
     </div>
   </section>;
@@ -388,17 +362,17 @@ function HomeView({
   filters,
   setFilters,
   onSelect,
-  searchMode
+  searchMode, searchTerm, years, onRequest, onReset
 }: {
   items: MediaItem[];
   loading: boolean;
   activeNav: string;
   activeTab: string;
   setActiveTab: (value: string) => void;
-  filters: { genre: string; access: string; region: string };
-  setFilters: (value: { genre: string; access: string; region: string }) => void;
+  filters: CatalogFilters;
+  setFilters: (value: CatalogFilters) => void;
   onSelect: (item: MediaItem) => void;
-  searchMode: boolean;
+  searchMode: boolean; searchTerm: string; years: number[]; onRequest: () => void; onReset: () => void;
 }) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const featured = !loading && !searchMode ? pickFeaturedItem(items) : undefined;
@@ -430,6 +404,12 @@ function HomeView({
         <FilterRow label="类型" values={genreFilters} active={filters.genre} onChange={(genre) => setFilters({ ...filters, genre })} />
         <FilterRow label="资费" values={accessFilters} active={filters.access} onChange={(access) => setFilters({ ...filters, access })} />
         <FilterRow label="地区" values={regionFilters} active={filters.region} onChange={(region) => setFilters({ ...filters, region })} />
+        <div className="catalog-extra-filters">
+          <label>年份<select aria-label="年份筛选" value={filters.year} onChange={(event) => setFilters({ ...filters, year: event.target.value })}><option>全部</option>{years.map((year) => <option key={year}>{year}</option>)}</select></label>
+          <label>评分<select aria-label="评分筛选" value={filters.rating} onChange={(event) => setFilters({ ...filters, rating: event.target.value })}><option value="全部">全部</option><option value="7">7 分以上</option><option value="8">8 分以上</option><option value="9">9 分以上</option></select></label>
+          <label>资源<select aria-label="资源状态筛选" value={filters.resources} onChange={(event) => setFilters({ ...filters, resources: event.target.value })}>{["全部", "有资源", "待补资源"].map((value) => <option key={value}>{value}</option>)}</select></label>
+          <button type="button" onClick={onReset}>重置筛选</button>
+        </div>
       </div> : null}
 
       <Spotlight item={featured} onSelect={onSelect} />
@@ -469,7 +449,7 @@ function HomeView({
           ))}
         </div>
       ) : (
-        <EmptyState text="没有找到匹配的视频" />
+        <div className="catalog-empty"><EmptyState text="没有找到匹配的视频" />{searchMode ? <button type="button" className="primary-action" onClick={onRequest}><Film size={16} />求片：{searchTerm}</button> : <button type="button" onClick={onReset}>重置筛选</button>}</div>
       )}
     </section>
   );
@@ -477,85 +457,88 @@ function HomeView({
 
 export default function App() {
   const [items, setItems] = useState<MediaItem[]>([]);
-  const [displayItems, setDisplayItems] = useState<MediaItem[]>([]);
-  const [selected, setSelected] = useState<MediaItem | null>(null);
-  const [activeNav, setActiveNav] = useState("首页");
-  const [activeTab, setActiveTab] = useState("热门");
-  const [query, setQuery] = useState("");
+  const [pathname, setPathname] = useState(location.pathname);
+  const [catalog, setCatalog] = useState(() => readCatalogUrl(new URL(location.href)));
+  const [query, setQuery] = useState(catalog.query);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
-  const [searchMode, setSearchMode] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
+  const [requestTitle, setRequestTitle] = useState("");
+  const [requestAfterLogin, setRequestAfterLogin] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   const [announcement, setAnnouncement] = useState<Announcement | null>(null);
   const [noticeOpen, setNoticeOpen] = useState(false);
-  const [filters, setFilters] = useState({ genre: "全部", access: "全部", region: "全部" });
-  const searchRequest = useRef(0);
+  const libraryRequest = useRef(0);
+  const detailRoute = parseDetailPath(pathname);
+  const selected = detailRoute ? items.find((item) => item.id === detailRoute.id && item.mediaType === detailRoute.mediaType) : undefined;
+  const missing = !loading && !loadError && (pathname !== "/" && !selected);
+  usePageSeo(selected, missing, Boolean(catalog.query && !selected));
 
   async function refreshLibrary() {
-    const media = await fetchMedia();
-    setItems(media); setDisplayItems(media);
-    setSelected((current) => current ? media.find((item) => item.id === current.id) ?? null : null);
-    setSearchMode(false); setLoadError("");
+    const request = ++libraryRequest.current; setLoading(true); setLoadError("");
+    try { const media = await fetchMedia(); if (request === libraryRequest.current) setItems(media); }
+    catch (error) { if (request === libraryRequest.current) setLoadError(error instanceof Error ? error.message : "加载失败。"); }
+    finally { if (request === libraryRequest.current) setLoading(false); }
   }
+  function applyLocation() {
+    setPathname(location.pathname);
+    if (location.pathname === "/") { const next = readCatalogUrl(new URL(location.href)); setCatalog(next); setQuery(next.query); }
+  }
+  function navigate(path: string) {
+    history.replaceState({ ...history.state, alum4k: true, scroll: window.scrollY }, "", location.href);
+    history.pushState({ alum4k: true, internal: true, scroll: 0 }, "", path);
+    applyLocation(); window.scrollTo(0, 0);
+  }
+  function openFilm(item: MediaItem) { if (pathname !== mediaPath(item)) navigate(mediaPath(item)); }
+  function back() { if (history.state?.alum4k && history.state.internal) history.back(); else navigate(catalogPath(catalog.filters, catalog.query)); }
   useEffect(() => {
-    refreshLibrary().catch((error) => setLoadError(error.message)).finally(() => setLoading(false));
+    const previous = history.scrollRestoration; history.scrollRestoration = "manual";
+    function pop() { applyLocation(); const scroll = history.state?.scroll ?? 0; requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scroll))); }
+    window.addEventListener("popstate", pop);
+    return () => { window.removeEventListener("popstate", pop); history.scrollRestoration = previous; };
+  }, []);
+  useEffect(() => {
+    refreshLibrary();
     fetchCurrentUser().then(setCurrentUser).catch(() => undefined);
     fetchSettings().then(({ announcement }) => { setAnnouncement(announcement); setNoticeOpen(shouldShowAnnouncement(announcement)); }).catch(() => undefined);
   }, []);
+  function clearSession() { libraryRequest.current++; setItems([]); setCurrentUser(null); setProfileOpen(false); setRequestsOpen(false); refreshLibrary(); }
   useEffect(() => {
-    function expire() { setCurrentUser(null); setProfileOpen(false); setRequestsOpen(false); setAuthOpen(true); refreshLibrary().catch((error) => setLoadError(error.message)); }
+    function expire() { clearSession(); setAuthOpen(true); }
     window.addEventListener("alum4k:session-expired", expire);
     return () => window.removeEventListener("alum4k:session-expired", expire);
   }, []);
-
-  const filteredItems = useMemo(() => {
-    let next = displayItems;
-    if (!searchMode && activeNav !== "首页") next = next.filter((item) => item.category === activeNav);
-    if (filters.genre !== "全部") next = next.filter((item) => item.genres.includes(filters.genre));
-    if (filters.access !== "全部") next = next.filter((item) => item.access === filters.access);
-    if (filters.region !== "全部") next = next.filter((item) => item.region === filters.region);
-    if (activeTab === "高分好评") next = [...next].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
-    if (activeTab === "最新上架") next = [...next].sort((a, b) => (Date.parse(b.createdAt ?? "") || (b.year ?? 0)) - (Date.parse(a.createdAt ?? "") || (a.year ?? 0)));
-    return next;
-  }, [activeNav, activeTab, displayItems, filters, searchMode]);
+  const filteredItems = useMemo(() => filterCatalog(items, catalog.filters, catalog.query), [items, catalog]);
   const relatedItems = useMemo(() => selected ? pickRelatedItems(selected, items) : [], [items, selected]);
+  const years = useMemo(() => [...new Set(items.map((item) => item.year).filter((year): year is number => Boolean(year)))].sort((a, b) => b - a), [items]);
+  function setFilters(filters: CatalogFilters) { navigate(catalogPath(filters, catalog.query)); }
+  function handleNav(category: string) { navigate(catalogPath({ ...defaultFilters, category }, "")); }
+  function handleSearch(value: string) { navigate(catalogPath(catalog.filters, value.trim())); }
+  function requestFilm(title = "") { setRequestTitle(title); if (currentUser) setRequestsOpen(true); else { setRequestAfterLogin(true); setAuthOpen(true); } }
 
-  function handleNav(value: string) {
-    searchRequest.current++; setLoading(false); setLoadError(""); setQuery("");
-    setActiveNav(value); setSearchMode(false); setDisplayItems(items); setSelected(null);
-    setFilters({ genre: "全部", access: "全部", region: "全部" });
-  }
-  async function handleSearch(value: string) {
-    const term = value.trim(); const request = ++searchRequest.current;
-    setQuery(term); setSelected(null); setLoadError("");
-    setFilters({ genre: "全部", access: "全部", region: "全部" });
-    if (!term) { setSearchMode(false); setDisplayItems(items); setLoading(false); return; }
-    setLoading(true); setSearchMode(true);
-    try { const result = await fetchMedia(term, true); if (request === searchRequest.current) setDisplayItems(result); }
-    catch (error) { if (request === searchRequest.current) setLoadError(error instanceof Error ? error.message : "搜索失败。"); }
-    finally { if (request === searchRequest.current) setLoading(false); }
-  }
   return <div className="app-shell">
-    <Sidebar active={activeNav} onChange={handleNav} />
+    <Sidebar active={catalog.filters.category} onChange={handleNav} />
     <main className="main-shell">
-      <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)}
-        onNotice={() => setBoardOpen(true)} onProfile={() => setProfileOpen(true)} onRequests={() => currentUser ? setRequestsOpen(true) : setAuthOpen(true)}
-        onLogout={() => { setAuthToken(""); setCurrentUser(null); setSelected(null); refreshLibrary().catch((error) => setLoadError(error.message)); }} />
+      <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)} items={items} onSelect={openFilm}
+        onNotice={() => setBoardOpen(true)} onProfile={() => setProfileOpen(true)} onRequests={() => requestFilm()}
+        onLogout={() => { setAuthToken(""); clearSession(); }} />
       <NoticeBoard />
-      {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={() => refreshLibrary().catch((error) => setLoadError(error.message))}>重试</button></div> : null}
-      {selected ? <DetailView item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={() => setSelected(null)}
-        onSelectRelated={(item) => { setSelected(item); window.scrollTo({ top: 0, behavior: "smooth" }); }} />
-        : <HomeView items={filteredItems} loading={loading} activeNav={activeNav} activeTab={activeTab} setActiveTab={setActiveTab} filters={filters} setFilters={setFilters} onSelect={setSelected} searchMode={searchMode} />}
+      {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={refreshLibrary}>重试</button></div> : null}
+      {selected ? <DetailView key={selected.id} item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={back} onSelectRelated={openFilm} />
+        : missing ? <section className="catalog-not-found"><h1>影视不存在</h1><p>该影视不存在或已经删除。</p><button type="button" className="primary-action" onClick={() => handleNav("首页")}><Home size={16} />返回首页</button></section>
+        : loading && pathname !== "/" ? <div className="empty-state">正在读取影视详情…</div>
+        : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
+            filters={catalog.filters} setFilters={setFilters} onSelect={openFilm} searchMode={Boolean(catalog.query)} searchTerm={catalog.query} years={years}
+            onReset={() => setFilters({ ...defaultFilters, category: catalog.filters.category })} onRequest={() => requestFilm(catalog.query)} />}
     </main>
-    <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(activeNav === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
-    {authOpen ? <AuthModal onClose={() => setAuthOpen(false)} onAuthed={(user) => { setCurrentUser(user); refreshLibrary().catch((error) => setLoadError(error.message)); }} /> : null}
+    <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(catalog.filters.category === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
+    {authOpen ? <AuthModal onClose={() => { setAuthOpen(false); setRequestAfterLogin(false); }} onAuthed={(user) => { setCurrentUser(user); refreshLibrary(); if (requestAfterLogin) { setRequestsOpen(true); setRequestAfterLogin(false); } }} /> : null}
     {currentUser && profileOpen ? <ProfileDialog user={currentUser} onChange={setCurrentUser} onClose={() => setProfileOpen(false)} /> : null}
-    {currentUser && requestsOpen ? <RequestsDialog onClose={() => setRequestsOpen(false)} /> : null}
+    {currentUser && requestsOpen ? <RequestsDialog initialTitle={requestTitle} onClose={() => setRequestsOpen(false)} /> : null}
     {boardOpen ? <BoardDialog onClose={() => setBoardOpen(false)} /> : null}
-    {announcement && noticeOpen && !selected && !authOpen && !profileOpen && !requestsOpen && !boardOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
+    {announcement && noticeOpen && pathname === "/" && !authOpen && !profileOpen && !requestsOpen && !boardOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
   </div>;
 }

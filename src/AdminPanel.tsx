@@ -1,7 +1,7 @@
 import {
   ArrowLeft, Bell, CheckCircle2, ChevronLeft, ChevronRight, Database, Download,
   FilePlus2, Film, Image, LayoutDashboard, Loader2, LogOut, Pencil, Plus, RefreshCcw,
-  Save, Search, ShieldCheck, Sparkles, Trash2, Upload, Users, X, KeyRound, MessageSquare
+  Save, Search, ShieldCheck, Sparkles, Trash2, Upload, Users, X, KeyRound, MessageSquare, Flag
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { batchMedia, collectTmdb, createAdmin, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip, resetPassword } from "./api";
@@ -14,6 +14,7 @@ import Dialog from "./Dialog";
 import NoticeBoard from "./NoticeBoard";
 import BulletinEditor from "./BulletinEditor";
 import { InvitationAdmin, RequestsAdmin } from "./CommunityAdmin";
+import ReportsAdmin from "./ReportsAdmin";
 import type { MediaItem, SiteSettings, User } from "./types";
 
 const blank: MediaItem = {
@@ -21,13 +22,14 @@ const blank: MediaItem = {
   region: "其他", access: "会员", status: "待补资源", genres: [], cast: [], overview: "",
   posterPath: "", backdropPath: "", resources: [], episodes: [], featured: false
 };
-type View = "library" | "collect" | "users" | "settings" | "invitations" | "requests";
+type View = "library" | "collect" | "users" | "settings" | "invitations" | "requests" | "reports";
 const sections = [
   { key: "library" as const, label: "媒体库", icon: Database },
   { key: "collect" as const, label: "影视采集", icon: FilePlus2 },
   { key: "users" as const, label: "用户 / VIP", icon: Users },
   { key: "invitations" as const, label: "邀请码", icon: KeyRound },
   { key: "requests" as const, label: "求片管理", icon: MessageSquare },
+  { key: "reports" as const, label: "资源反馈", icon: Flag },
   { key: "settings" as const, label: "站点设置", icon: Bell }
 ];
 const pageSize = 12;
@@ -242,6 +244,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
       {notice ? <div className={`admin-feedback ${notice.error ? "error" : "success"}`} role={notice.error ? "alert" : "status"}><CheckCircle2 size={17} /><span>{notice.text}</span><button type="button" onClick={() => setNotice(null)} title="关闭提示"><X size={16} /></button></div> : null}
       {view === "invitations" ? <InvitationAdmin /> : null}
       {view === "requests" ? <RequestsAdmin /> : null}
+      {view === "reports" ? <ReportsAdmin library={library} onEdit={openDraft} onLibraryChange={onLibraryChange} /> : null}
 
       {view === "library" ? <section className="admin-library-view">
         <div className="admin-toolbar">
@@ -284,6 +287,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <fieldset disabled={busy}><div className="admin-form-grid">
             <label>影视标题<input value={draft.title} required onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
             <label>原名<input value={draft.originalTitle ?? ""} onChange={(event) => setDraft({ ...draft, originalTitle: event.target.value })} /></label>
+            <label>搜索别名<textarea aria-label="搜索别名" rows={3} maxLength={2000} value={(draft.aliases ?? []).join("\n")} onChange={(event) => setDraft({ ...draft, aliases: event.target.value.split(/\r?\n/) })} /></label>
             <label>影视类型<select value={draft.mediaType} onChange={(event) => setDraft({ ...draft, mediaType: event.target.value as MediaItem["mediaType"] })}><option value="movie">电影</option><option value="tv">剧集</option></select></label>
             <label>TMDB ID<input type="number" min="1" value={draft.tmdbId ?? ""} onChange={(event) => setDraft({ ...draft, tmdbId: Number(event.target.value) || undefined })} /></label>
             <label>分类<select aria-label="分类" value={draft.categoryMode === "auto" ? autoCategory : draft.category} disabled={draft.categoryMode === "auto"} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{mediaCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
@@ -326,6 +330,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <h2 className="settings-section-heading"><Search size={18} />浏览器标题与介绍</h2>
           <label className="admin-wide-field">前台浏览器标题<input maxLength={80} value={settings.seo.title} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, title: event.target.value } })} /></label>
           <label className="admin-wide-field">后台浏览器标题<input maxLength={80} value={settings.seo.adminTitle} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, adminTitle: event.target.value } })} /></label>
+          <label className="admin-wide-field">网站地址<input aria-label="网站地址" type="url" value={settings.seo.siteUrl || ""} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, siteUrl: event.target.value } })} /></label>
           <label className="admin-wide-field">网站介绍<textarea aria-label="网站介绍" rows={3} maxLength={240} value={settings.seo.description} onChange={(event) => setSettings({ ...settings, seo: { ...settings.seo, description: event.target.value } })} /></label>
           <BulletinEditor items={settings.bulletins} onChange={(bulletins) => setSettings((settings) => ({ ...settings, bulletins }))} />
           <h2 className="settings-section-heading"><Bell size={18} />首页公告</h2>
