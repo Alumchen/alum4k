@@ -147,6 +147,22 @@ test("media save supports automatic and manual classification without TMDB dupli
   assert.equal((await request(`/api/media/${saved.body.item.id}`, "GET", undefined, adminToken)).body.item.category, "动漫");
 });
 
+test("saving an unsaved TMDB draft or deleted entry creates it without stale-ID failures", async () => {
+  const input = { id: "tmdb-movie-777777", title: "未入库采集条目", tmdbId: 777777, mediaType: "movie", resources: [{ id: "raw", type: "115", url: "随便填写\n分享文字", access: "free" }] };
+  assert.equal((await request(`/api/admin/media/${input.id}`, "PUT", input, userToken)).status, 403);
+  const created = await request(`/api/admin/media/${input.id}`, "PUT", input, adminToken);
+  assert.equal(created.status, 200); assert.equal(created.body.item.id, input.id);
+  assert.equal(created.body.item.resources[0].url, input.resources[0].url);
+  const repeated = await request("/api/admin/media/stale-other-id", "PUT", { ...input, title: "再次保存" }, adminToken);
+  assert.equal(repeated.status, 200); assert.equal(repeated.body.item.id, input.id);
+  assert.equal(repeated.body.item.createdAt, created.body.item.createdAt);
+  assert.equal((await request("/api/media", "GET", undefined, adminToken)).body.items.filter((item: { tmdbId: number }) => item.tmdbId === 777777).length, 1);
+  await request(`/api/admin/media/${input.id}`, "DELETE", undefined, adminToken);
+  const restored = await request(`/api/admin/media/${input.id}`, "PUT", { ...input, title: "旧编辑框重新保存" }, adminToken);
+  assert.equal(restored.status, 200); assert.equal(restored.body.item.title, "旧编辑框重新保存");
+  await request(`/api/admin/media/${input.id}`, "DELETE", undefined, adminToken);
+});
+
 test("concurrent saves retain all items and invalid imports do not partially write", async () => {
   const results = await Promise.all(Array.from({ length: 8 }, (_, index) => request("/api/admin/media", "POST", { title: `并发条目${index}`, resources: [] }, adminToken)));
   assert.ok(results.every((result) => result.status === 201));

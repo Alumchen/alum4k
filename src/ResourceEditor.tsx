@@ -1,6 +1,6 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { DownloadResource } from "./types";
-import { availabilityLabels, resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
+import { resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
 
 export function cleanResources(resources: DownloadResource[] = []) {
   return resources.filter((resource) => resource.url.trim());
@@ -32,7 +32,6 @@ export default function ResourceEditor({ resources, defaultAccess, onChange }: {
           {([ ["分辨率", "resolution", resolutions], ["动态范围", "dynamicRange", dynamicRanges], ["视频编码", "videoCodec", videoCodecs] ] as const).map(([name, key, options]) => <label key={key}>{name}<select aria-label={`${label}${index + 1}${name}`} value={resource[key] || ""} onChange={(event) => update(resource, { [key]: event.target.value })}><option value="">未填写</option>{options.map((value) => <option key={value}>{value}</option>)}</select></label>)}
           <label>字幕<input aria-label={`${label}${index + 1}字幕`} maxLength={160} value={resource.subtitles || ""} onChange={(event) => update(resource, { subtitles: event.target.value })} /></label>
           <label>音轨<input aria-label={`${label}${index + 1}音轨`} maxLength={160} value={resource.audio || ""} onChange={(event) => update(resource, { audio: event.target.value })} /></label>
-          <label>资源状态<select aria-label={`${label}${index + 1}资源状态`} value={resource.availability || "unknown"} onChange={(event) => update(resource, { availability: event.target.value as DownloadResource["availability"] })}>{Object.entries(availabilityLabels).map(([key, value]) => <option key={key} value={key}>{value}</option>)}</select></label>
         </div><label>备注<input maxLength={500} value={resource.note ?? ""} onChange={(event) => update(resource, { note: event.target.value })} /></label></details>
       </div>)}
     </section>;

@@ -347,6 +347,9 @@ try {
   await page.getByLabel("115 网盘链接", { exact: true }).fill(rawText);
   await page.getByLabel("115 网盘链接1提取码", { exact: true }).fill("");
   await page.getByLabel("磁力链接", { exact: true }).fill("javascript:alert(1)");
+  const auth = await (await fetch(api.base + "/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: "admin", password: adminPassword }) })).json();
+  const removed = await fetch(api.base + "/api/admin/media/test-movie", { method: "DELETE", headers: { authorization: `Bearer ${auth.token}` } });
+  assert.equal(removed.status, 200);
   await page.getByRole("button", { name: "保存影视", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
   await page.goto(base);

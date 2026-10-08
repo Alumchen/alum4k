@@ -146,10 +146,9 @@ export function normalizeMediaItem(input: Partial<MediaItem>, existingIds: strin
 }
 
 function saveItem(items: MediaItem[], input: Partial<MediaItem>, currentId?: string) {
-  const existing = currentId ? items.find((item) => item.id === currentId) : items.find((item) =>
+  const existing = (currentId ? items.find((item) => item.id === currentId) : undefined) ?? items.find((item) =>
     (input.id && item.id === input.id) || (input.tmdbId && item.tmdbId === input.tmdbId && item.mediaType === input.mediaType)
   );
-  if (currentId && !existing) throw new Error("这个影视条目已被删除，请刷新媒体库。");
   const next = normalizeMediaItem({ ...input, id: existing?.id ?? input.id, createdAt: existing?.createdAt ?? input.createdAt }, items.map((item) => item.id), existing?.id);
   next.resources = next.resources?.map((resource) => {
     const old = existing ? normalizeResources(existing).find((entry) => entry.id === resource.id) : undefined;
