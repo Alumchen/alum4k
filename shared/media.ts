@@ -33,3 +33,12 @@ export function extractDownloadLink(type: "115" | "magnet", input: string) {
   const code = type === "115" ? text.match(/(?:提取码|访问码|访问密码)\s*[:：]?\s*([a-z0-9]{4,12})/i)?.[1] : undefined;
   return { url: urls[0], code };
 }
+
+export function resourceHref(value: string): string | undefined {
+  const text = value.trim();
+  if (/\s/.test(text)) return undefined;
+  try {
+    const url = new URL(text);
+    return ["https:", "http:", "magnet:"].includes(url.protocol) && !url.username && !url.password ? text : undefined;
+  } catch { return undefined; }
+}

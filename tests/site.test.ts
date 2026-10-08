@@ -4,7 +4,8 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia } from "../shared/catalog";
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
-import { classifyMedia, extractDownloadLink, isDownloadUrl } from "../shared/media";
+import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
+import { cleanResources } from "../src/ResourceEditor";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
@@ -50,7 +51,7 @@ test("catalog exact aliases, suggestions, compound filters and URL round trips",
   const filters = { ...defaultFilters, category: "电影", access: "免费", genre: "喜剧", region: "内地", year: "2024", rating: "8", resources: "有资源" };
   assert.deepEqual(filterCatalog([movie, empty], filters, "旧译名").map((item) => item.id), [movie.id]);
   assert.equal(filterCatalog([movie, empty], { ...filters, rating: "9" }).length, 0);
-  assert.equal(filterCatalog([{ ...movie, resources: [{ access: "free", availability: "invalid" }] }], filters).length, 0);
+  assert.equal(filterCatalog([{ ...movie, resources: [{ access: "free", availability: "invalid" }] }], filters).length, 1);
   assert.equal(filterCatalog([empty], { ...defaultFilters, resources: "待补资源" }).length, 1);
   assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "旧译名"), "https://example.com")), { filters, query: "旧译名" });
   assert.deepEqual(parseDetailPath(mediaPath(movie)), { id: movie.id, mediaType: "movie" });
@@ -88,6 +89,23 @@ test("plain URLs and copied share text need no separator format", () => {
   assert.throws(() => extractDownloadLink("115", "javascript:alert(1)"));
 });
 
+test("resource input is preserved verbatim without URL format checks", async () => {
+  const texts = ["  分享说明\nhttps://example.com/download 提取码：Ab12  ", "/电影/片名.mkv", "任意文字", "javascript:alert(1)", "magnet:?anything=here"];
+  const resources = texts.map((url, index) => ({ id: `raw-${index}`, type: index === 4 ? "magnet" as const : "115" as const, title: "原样资源", url, access: index === 2 ? "vip" as const : "free" as const }));
+  assert.deepEqual(cleanResources(resources).map((item) => item.url), texts);
+  const saved = await request("/api/admin/media", "POST", { title: "原样输入验证", resources }, adminToken);
+  assert.equal(saved.status, 201);
+  const id = saved.body.item.id;
+  assert.deepEqual((await request(`/api/media/${id}`, "GET", undefined, adminToken)).body.item.resources.map((item: { url: string }) => item.url), texts);
+  const guest = (await request(`/api/media/${id}`)).body.item.resources;
+  assert.equal(guest[0].url, texts[0]); assert.equal(guest[2].url, "");
+  assert.equal(resourceHref(texts[0]), undefined); assert.equal(resourceHref(texts[3]), undefined);
+  assert.equal(resourceHref("https://example.com/download"), "https://example.com/download");
+  assert.equal(resourceHref(texts[4]), texts[4]);
+  assert.equal((await request("/api/admin/media", "POST", { title: "过长内容", resources: [{ type: "115", url: "x".repeat(10001) }] }, adminToken)).status, 400);
+  await request(`/api/admin/media/${id}`, "DELETE", undefined, adminToken);
+});
+
 test("public responses hide links, extraction codes and legacy playback sources", async () => {
   const { body } = await request("/api/media");
   const movie = body.items.find((item: { id: string }) => item.id === "test-movie");
@@ -122,7 +140,7 @@ test("media save supports automatic and manual classification without TMDB dupli
   assert.equal(saved.status, 201); assert.equal(saved.body.item.category, "动漫");
   const updated = await request("/api/admin/media", "POST", { ...input, title: "重新采集", categoryMode: "manual", category: "短剧" }, adminToken);
   assert.equal(updated.body.item.id, saved.body.item.id); assert.equal(updated.body.item.category, "短剧");
-  assert.equal((await request("/api/admin/media", "POST", { title: "无效资源", resources: [{ type: "115", url: "/电影/no.mp4" }] }, adminToken)).status, 400);
+  assert.equal((await request("/api/admin/media", "POST", { title: "自定义资源", resources: [{ type: "115", url: "/电影/no.mp4" }] }, adminToken)).status, 201);
   const items = (await request("/api/media", "GET", undefined, adminToken)).body.items;
   assert.equal(items.filter((item: { tmdbId: number }) => item.tmdbId === 666).length, 1);
   assert.equal((await request("/api/admin/media/batch", "POST", { action: "classify", ids: [saved.body.item.id] }, adminToken)).body.count, 1);

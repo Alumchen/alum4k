@@ -31,7 +31,6 @@ export async function startTestApi() {
     source: { provider: "115", type: "direct", directUrl: "https://private.invalid/video" },
     episodes: [{ id: "main", title: "正片", source: { provider: "115", type: "alist", path: "/private/movie.mp4" } }],
     resources: [
-      { id: "old-alist", type: "115", title: "旧路径", url: "/电影/旧路径.mp4" },
       { id: "pan", type: "115", title: "4K 原盘", url: panUrl, code: "abcd", size: "18 GB" },
       { id: "magnet", type: "magnet", title: "磁力资源", url: magnetUrl }
     ]

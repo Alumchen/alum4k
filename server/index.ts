@@ -7,7 +7,6 @@ import {
 import { batchMedia, deleteMedia, findMedia, importLibrary, loadLibrary, upsertMedia } from "./library";
 import { getTmdbDetail, hasTmdbCredentials, searchTmdb } from "./tmdb";
 import { loadSettings, saveSettings } from "./settings";
-import { isDownloadUrl } from "../shared/media";
 import type { MediaItem, MediaType } from "./types";
 import { listFilmRequests, submitFilmRequest, updateFilmRequest } from "./requests";
 import { syncSiteHead, renderPublicPage, renderSitemap, renderSitemapIndex, siteOrigin } from "./seo";
@@ -74,8 +73,8 @@ function validateResources(input: Partial<MediaItem>) {
       if (resource?.[key] !== undefined && (typeof resource[key] !== "string" || resource[key]!.length > maximum)) throw new Error("资源详情超出长度限制。");
     }
     if (resource?.access !== undefined && !["free", "vip"].includes(resource.access)) throw new Error("链接权限应为免费或 VIP。");
-    if (!resource || !["115", "magnet"].includes(resource.type) || !isDownloadUrl(resource.type, String(resource.url ?? ""))) {
-      throw new Error("请填写有效的 115 网盘链接或磁力链接，AList 路径已停用。");
+    if (!resource || !["115", "magnet"].includes(resource.type) || typeof resource.url !== "string" || resource.url.length > 10000) {
+      throw new Error("资源内容需为文本，每项最多 10000 个字符。");
     }
   }
 }

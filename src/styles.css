@@ -2111,7 +2111,7 @@ button:focus-visible, a:focus-visible { outline: 2px solid #13e5d3; outline-offs
 .resource-link-row { gap: 20px; }
 .resource-link-info { min-width: 0; }
 .resource-url-line { display: flex; align-items: center; gap: 12px; margin-top: 12px; padding: 9px 10px 9px 12px; border: 1px solid #ffffff15; border-radius: 6px; background: #101415; }
-.resource-url-line > a { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #b9cbd0; font-size: 13px; text-decoration: none; }
+.resource-url-line > a, .resource-plain-text { min-width: 0; flex: 1; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text); font-size: 13px; text-decoration: none; }
 .copy-link-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; flex: 0 0 84px; height: 32px; padding: 0 8px; white-space: nowrap; border: 0; border-radius: 4px; color: #13e5d3; background: #13e5d314; }
 .copy-link-button svg { flex-shrink: 0; }
 .resource-open-button { width: fit-content; display: inline-flex; align-items: center; gap: 7px; text-decoration: none; padding: 10px 12px; border-radius: 6px; background: #13e5d3; color: #08211f; font-size: 14px; font-weight: 700; }

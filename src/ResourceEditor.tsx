@@ -1,13 +1,9 @@
 import { Plus, Trash2 } from "lucide-react";
-import { extractDownloadLink } from "../shared/media";
 import type { DownloadResource } from "./types";
 import { availabilityLabels, resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
 
 export function cleanResources(resources: DownloadResource[] = []) {
-  return resources.filter((resource) => resource.url.trim()).map((resource) => {
-    const extracted = extractDownloadLink(resource.type, resource.url);
-    return { ...resource, url: extracted.url, code: extracted.code ?? resource.code };
-  });
+  return resources.filter((resource) => resource.url.trim());
 }
 
 export default function ResourceEditor({ resources, defaultAccess, onChange }: {

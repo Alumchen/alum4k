@@ -28,7 +28,7 @@ export function suggestMedia<T extends CatalogItem>(items: T[], query: string) {
 }
 export function filterCatalog<T extends CatalogItem>(items: T[], filters: CatalogFilters, query = "") {
   const next = items.filter((item) => {
-    const resources = item.resources ?? []; const usable = resources.filter((resource) => resource.availability !== "invalid");
+    const usable = item.resources ?? [];
     return (!query || matchesExact(item, query)) && (filters.category === "首页" || item.category === filters.category) &&
       (filters.genre === "全部" || item.genres.includes(filters.genre)) && (filters.region === "全部" || item.region === filters.region) &&
       (filters.year === "全部" || String(item.year) === filters.year) && (filters.rating === "全部" || (item.rating ?? 0) >= Number(filters.rating)) &&

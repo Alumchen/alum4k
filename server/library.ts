@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import crypto from "node:crypto";
 import path from "node:path";
-import { classifyMedia, isDownloadUrl } from "../shared/media";
+import { classifyMedia } from "../shared/media";
 import type { DownloadResource, MediaItem } from "./types";
 import { normalizeResourceDetails } from "../shared/resources";
 
@@ -38,8 +38,8 @@ function normalizeResources(input: Partial<MediaItem>): DownloadResource[] {
   const seenIds = new Set<string>();
   return (Array.isArray(input.resources) ? input.resources : []).flatMap((resource, index) => {
     if (!resource || !["115", "magnet"].includes(resource.type)) return [];
-    const url = cleanText(resource.url);
-    if (!isDownloadUrl(resource.type, url)) return [];
+    const url = typeof resource.url === "string" ? resource.url : "";
+    if (!url.trim()) return [];
     const key = `${resource.type}:${url}`;
     if (seenUrls.has(key)) return [];
     seenUrls.add(key);
