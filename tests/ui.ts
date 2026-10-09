@@ -107,6 +107,94 @@ try {
     assert.equal(await taxonomy.locator(".media-title").textContent(), title);
   }
   await taxonomyContext.close();
+  const pagingContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const paging = await pagingContext.newPage();
+  paging.on("pageerror", (error) => errors.push(error.message));
+  const pagingItems = ["电视剧", "电影", "综艺", "动漫", "少儿", "短剧", "纪录片", "游戏"].flatMap((category, group) => Array.from({ length: category === "电影" ? 28 : 81 }, (_, index) => ({
+    ...template, id: `paging-${group}-${index}`, title: `分页${category}${index + 1}`, category, genres: index % 2 ? ["喜剧"] : ["剧情"], aliases: category === "电视剧" ? ["分页共同名称"] : [], featured: false
+  })));
+  await paging.route("**/api/media", (route) => route.fulfill({ json: { items: pagingItems } }));
+  await paging.goto(base + "/?category=" + encodeURIComponent("电视剧"));
+  const pageControls = paging.getByRole("navigation", { name: "影视分页", exact: true });
+  async function checkTwoRows(full: boolean) {
+    await paging.waitForFunction((requireFull) => {
+      const grid = document.querySelector(".catalog-media-grid");
+      if (!grid || grid.getAttribute("aria-busy") === "true") return false;
+      const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
+      return requireFull ? grid.children.length === columns * 2 : grid.children.length > 0 && grid.children.length <= columns * 2;
+    }, full);
+    const positions = await paging.locator(".catalog-media-grid .media-card").evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
+    assert.ok(new Set(positions).size <= 2, "catalog pages must not exceed two poster rows");
+    if (full) assert.equal(new Set(positions).size, 2);
+    await checkOverflow(paging, "two-row pagination");
+  }
+  await checkTwoRows(true);
+  assert.equal(await pageControls.getByRole("button", { name: "上一页", exact: true }).isDisabled(), true);
+  const firstTitles = await paging.locator(".media-title").allTextContents();
+  await pageControls.getByRole("button", { name: "下一页", exact: true }).click();
+  await checkTwoRows(true);
+  assert.equal(new URL(paging.url()).searchParams.get("page"), "2");
+  const secondTitles = await paging.locator(".media-title").allTextContents();
+  assert.equal(secondTitles.some((title) => firstTitles.includes(title)), false);
+  await paging.reload(); await checkTwoRows(true);
+  assert.deepEqual(await paging.locator(".media-title").allTextContents(), secondTitles);
+  await paging.locator(".media-card").first().click();
+  await paging.locator(".detail-view").waitFor();
+  await paging.getByRole("button", { name: "返回", exact: true }).click();
+  await checkTwoRows(true);
+  assert.equal(new URL(paging.url()).searchParams.get("page"), "2");
+  assert.deepEqual(await paging.locator(".media-title").allTextContents(), secondTitles);
+  await paging.locator(".filter-row").first().getByRole("button", { name: "喜剧", exact: true }).click();
+  await checkTwoRows(true);
+  assert.equal(new URL(paging.url()).searchParams.has("page"), false);
+  await pageControls.getByRole("button", { name: "下一页", exact: true }).click();
+  await paging.getByRole("button", { name: "最新上架", exact: true }).click();
+  await checkTwoRows(true);
+  assert.equal(new URL(paging.url()).searchParams.has("page"), false);
+  for (const category of ["电影", "综艺", "动漫", "少儿", "短剧", "纪录片", "游戏", "电视剧"]) {
+    await paging.locator(".sidebar").getByRole("button", { name: category, exact: true }).click();
+    await checkTwoRows(true);
+    assert.equal(new URL(paging.url()).searchParams.has("page"), false);
+  }
+  await pageControls.getByRole("button", { name: "下一页", exact: true }).click();
+  await paging.getByPlaceholder("搜索影视名", { exact: true }).fill("分页共同名称");
+  await paging.getByPlaceholder("搜索影视名", { exact: true }).press("Enter");
+  await checkTwoRows(true);
+  assert.equal(new URL(paging.url()).searchParams.has("page"), false);
+  await paging.getByRole("button", { name: "重置筛选", exact: true }).click();
+  await checkTwoRows(true);
+  const visited: string[] = [];
+  for (;;) {
+    await checkTwoRows(false);
+    visited.push(...await paging.locator(".media-title").allTextContents());
+    const next = pageControls.getByRole("button", { name: "下一页", exact: true });
+    if (await next.isDisabled()) break;
+    await next.click();
+  }
+  assert.equal(visited.length, 81); assert.equal(new Set(visited).size, 81, "pagination must not duplicate or omit entries");
+  await paging.goto(base + "/?category=" + encodeURIComponent("电视剧") + "&page=99999");
+  await checkTwoRows(false);
+  await paging.waitForFunction(() => !location.search.includes("99999"));
+  assert.equal(await pageControls.getByRole("button", { name: "下一页", exact: true }).isDisabled(), true);
+  for (const width of [3051, 1440, 768, 390, 320]) {
+    await paging.setViewportSize({ width, height: 1000 });
+    await paging.goto(base + "/?category=" + encodeURIComponent("电视剧"));
+    await checkTwoRows(true);
+    const nav = await pageControls.boundingBox();
+    assert.ok(nav && nav.x >= 0 && nav.x + nav.width <= width, "pagination controls must fit the viewport");
+    await capture(paging, `catalog-pagination-${width}.png`);
+  }
+  await paging.goto(base + "/?category=" + encodeURIComponent("电影"));
+  await checkTwoRows(true);
+  assert.equal(await pageControls.getByRole("button", { name: "第 7 页", exact: true }).count(), 1);
+  await checkOverflow(paging, "seven pagination buttons at 320px");
+  await pageControls.getByRole("button", { name: "第 7 页", exact: true }).click();
+  await checkTwoRows(false);
+  assert.equal(await paging.locator(".media-card").count(), 4);
+  await paging.goto(base);
+  await paging.locator(".latest-media-grid").first().waitFor();
+  assert.equal(await pageControls.count(), 0, "homepage must remain unchanged without catalog pagination");
+  await pagingContext.close();
   const carouselContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const carousel = await carouselContext.newPage();
   carousel.on("pageerror", (error) => errors.push(error.message));

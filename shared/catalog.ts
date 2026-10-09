@@ -12,6 +12,18 @@ export function latestCategoryItems<T extends CatalogItem>(items: T[], category:
 }
 export interface CatalogFilters { category: string; genre: string; access: string; region: string; year: string; rating: string; resources: string; sort: string; }
 export const defaultFilters: CatalogFilters = { category: "首页", genre: "全部", access: "全部", region: "全部", year: "全部", rating: "全部", resources: "全部", sort: "热门" };
+export function catalogPageNumber(value: unknown) { const number = Number(value); return Number.isSafeInteger(number) && number > 0 ? number : 1; }
+export function paginateCatalog<T>(items: T[], size: number, requestedPage: number) {
+  const pageSize = catalogPageNumber(size);
+  const pages = Math.max(1, Math.ceil(items.length / pageSize));
+  const page = Math.min(pages, catalogPageNumber(requestedPage));
+  return { items: items.slice((page - 1) * pageSize, page * pageSize), page, pages, pageSize, total: items.length };
+}
+export function catalogPageNumbers(page: number, pages: number) {
+  if (pages <= 7) return Array.from({ length: pages }, (_, index) => index + 1);
+  const start = Math.max(2, Math.min(page - 1, pages - 3));
+  return [1, ...Array.from({ length: 3 }, (_, index) => start + index), pages];
+}
 export function normalizeSearch(value: unknown) {
   return String(value ?? "").normalize("NFKC").trim().toLowerCase().replace(/[《》<>"']/g, "").replace(/[\s._\-:：·，,。/\\]+/g, "");
 }
@@ -54,11 +66,12 @@ export function readCatalogUrl(url: URL) {
   if (!["全部", "有资源", "待补资源"].includes(filters.resources)) filters.resources = "全部";
   if (!["全部", "7", "8", "9"].includes(filters.rating)) filters.rating = "全部";
   if (!["热门", "最新上架", "高分好评"].includes(filters.sort)) filters.sort = "热门";
-  return { filters, query: (url.searchParams.get("q") ?? "").slice(0, 100) };
+  return { filters, query: (url.searchParams.get("q") ?? "").slice(0, 100), page: catalogPageNumber(url.searchParams.get("page")) };
 }
-export function catalogPath(filters: CatalogFilters, query: string) {
+export function catalogPath(filters: CatalogFilters, query: string, page = 1) {
   const params = new URLSearchParams();
   if (query.trim()) params.set("q", query.trim());
   for (const key of Object.keys(filters) as (keyof CatalogFilters)[]) if (filters[key] !== defaultFilters[key]) params.set(key, filters[key]);
+  if (catalogPageNumber(page) > 1) params.set("page", String(catalogPageNumber(page)));
   return params.size ? `/?${params}` : "/";
 }

@@ -2,7 +2,7 @@ import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia } from "../shared/catalog";
+import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia, paginateCatalog, catalogPageNumbers } from "../shared/catalog";
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
 import { cleanResources } from "../src/ResourceEditor";
@@ -106,9 +106,28 @@ test("catalog exact aliases, suggestions, compound filters and URL round trips",
   assert.equal(filterCatalog([movie, empty], { ...filters, rating: "9" }).length, 0);
   assert.equal(filterCatalog([{ ...movie, resources: [{ access: "free", availability: "invalid" }] }], filters).length, 1);
   assert.equal(filterCatalog([empty], { ...defaultFilters, resources: "待补资源" }).length, 1);
-  assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "旧译名"), "https://example.com")), { filters, query: "旧译名" });
+  assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "旧译名"), "https://example.com")), { filters, query: "旧译名", page: 1 });
   assert.deepEqual(parseDetailPath(mediaPath(movie)), { id: movie.id, mediaType: "movie" });
   assert.equal(parseDetailPath("/movie/%ZZ"), null); assert.equal(parseDetailPath("/movie/a%2Fb"), null);
+});
+
+test("catalog pagination slices after filtering, clamps pages and preserves URL state", () => {
+  const items = Array.from({ length: 17 }, (_, index) => index + 1);
+  assert.deepEqual(paginateCatalog(items, 8, 2), { items: [9, 10, 11, 12, 13, 14, 15, 16], page: 2, pages: 3, pageSize: 8, total: 17 });
+  assert.deepEqual(paginateCatalog(items, 8, 99).items, [17]);
+  assert.equal(paginateCatalog(items, 4, 2).pages, 5);
+  assert.equal(paginateCatalog([], 8, 99).page, 1);
+  for (const value of ["-1", "0", "NaN", "1.5", "9007199254740992"]) assert.equal(readCatalogUrl(new URL(`https://example.com/?page=${value}`)).page, 1);
+  const filters = { ...defaultFilters, category: "电视剧", genre: "喜剧" };
+  assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "片名", 3), "https://example.com")), { filters, query: "片名", page: 3 });
+  assert.equal(new URL(catalogPath(filters, ""), "https://example.com").searchParams.has("page"), false);
+  assert.deepEqual(catalogPageNumbers(1, 7), [1, 2, 3, 4, 5, 6, 7]);
+  for (const page of [1, 2, 50, 99, 100]) {
+    const numbers = catalogPageNumbers(page, 100);
+    assert.ok(numbers.includes(page)); assert.equal(numbers[0], 1); assert.equal(numbers.at(-1), 100);
+    assert.equal(new Set(numbers).size, numbers.length); assert.ok(numbers.length <= 5);
+  }
+  assert.equal(items.length, 17);
 });
 
 test("genre filters use category-specific taxonomies and retain custom library labels", () => {

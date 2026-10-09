@@ -3,6 +3,8 @@ import {
   BadgeCheck,
   Bell,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CirclePlay,
   Clock3,
   Crown,
@@ -42,7 +44,7 @@ import DownloadLink, { ResourceSummary } from "./ResourceDownloads";
 import SearchBox from "./SearchBox";
 import HotCarousel from "./HotCarousel";
 import usePageSeo from "./usePageSeo";
-import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
+import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, paginateCatalog, catalogPageNumbers, type CatalogFilters } from "../shared/catalog";
 import { getSeasons, isSeasonNumber, resourcesForSeason, seasonLabel, seasonStatus, selectedSeasonNumber } from "../shared/seasons";
 import { genreOptions, genreTaxonomy } from "../shared/genres";
 
@@ -375,7 +377,7 @@ function HomeView({
   filters,
   setFilters,
   onSelect,
-  searchMode, searchTerm, years, onRequest, onReset, genreValues
+  searchMode, searchTerm, years, onRequest, onReset, genreValues, page, onPage
 }: {
   items: MediaItem[];
   loading: boolean;
@@ -387,8 +389,22 @@ function HomeView({
   onSelect: (item: MediaItem) => void;
   searchMode: boolean; searchTerm: string; years: number[]; onRequest: () => void; onReset: () => void;
   genreValues: string[];
+  page: number; onPage: (page: number, replace?: boolean) => void;
 }) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
+  const grid = useRef<HTMLDivElement>(null);
+  const [columns, setColumns] = useState(2);
+  useEffect(() => {
+    const element = grid.current;
+    if (!element) return;
+    const measure = () => setColumns(Math.max(1, getComputedStyle(element).gridTemplateColumns.split(" ").filter(Boolean).length));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  const pagination = paginateCatalog(items, columns * 2, page);
+  useEffect(() => { if (!loading && pagination.page !== page) onPage(pagination.page, true); }, [loading, pagination.page, page, onPage]);
   const downloadTotal = items.filter((item) => downloadResourceCount(item) > 0).length;
   const vipTotal = items.filter((item) => item.access !== "免费").length;
 
@@ -448,21 +464,27 @@ function HomeView({
         </div>
       </div>
 
+      <div className="media-grid catalog-media-grid" ref={grid} aria-busy={loading}>
       {loading ? (
-        <div className="loading-grid">
-          {Array.from({ length: 10 }).map((_, index) => (
+          Array.from({ length: columns * 2 }).map((_, index) => (
             <div className="skeleton-card" key={index} />
-          ))}
-        </div>
+          ))
       ) : items.length ? (
-        <div className="media-grid">
-          {items.map((item) => (
+          pagination.items.map((item) => (
             <MediaCard item={item} key={item.id} onSelect={onSelect} />
-          ))}
-        </div>
+          ))
       ) : (
         <div className="catalog-empty"><EmptyState text="没有找到匹配的视频" />{searchMode ? <button type="button" className="primary-action" onClick={onRequest}><Film size={16} />求片：{searchTerm}</button> : <button type="button" onClick={onReset}>重置筛选</button>}</div>
       )}
+      </div>
+      {!loading && pagination.pages > 1 ? <nav className="catalog-pagination" aria-label="影视分页">
+        <span className="catalog-page-summary" role="status">共 {pagination.total} 部 · 第 {pagination.page} / {pagination.pages} 页</span>
+        <div className="catalog-page-buttons">
+          <button type="button" aria-label="上一页" title="上一页" disabled={pagination.page === 1} onClick={() => onPage(pagination.page - 1)}><ChevronLeft size={18} /></button>
+          {catalogPageNumbers(pagination.page, pagination.pages).map((number, index, numbers) => <span className="catalog-page-slot" key={number}>{index > 0 && number > numbers[index - 1] + 1 ? <span className="catalog-page-gap" aria-hidden="true">...</span> : null}<button type="button" aria-label={`第 ${number} 页`} aria-current={pagination.page === number ? "page" : undefined} onClick={() => { if (number !== pagination.page) onPage(number); }}>{number}</button></span>)}
+          <button type="button" aria-label="下一页" title="下一页" disabled={pagination.page === pagination.pages} onClick={() => onPage(pagination.page + 1)}><ChevronRight size={18} /></button>
+        </div>
+      </nav> : null}
     </section>
   );
 }
@@ -505,7 +527,7 @@ export default function App() {
     applyLocation(); window.scrollTo(0, 0);
   }
   function openFilm(item: MediaItem) { if (pathname !== mediaPath(item)) navigate(mediaPath(item)); }
-  function back() { if (history.state?.alum4k && history.state.internal) history.back(); else navigate(catalogPath(catalog.filters, catalog.query)); }
+  function back() { if (history.state?.alum4k && history.state.internal) history.back(); else navigate(catalogPath(catalog.filters, catalog.query, catalog.page)); }
   useEffect(() => {
     const previous = history.scrollRestoration; history.scrollRestoration = "manual";
     function pop() { applyLocation(); const scroll = history.state?.scroll ?? 0; requestAnimationFrame(() => requestAnimationFrame(() => window.scrollTo(0, scroll))); }
@@ -523,10 +545,15 @@ export default function App() {
     window.addEventListener("alum4k:session-expired", expire);
     return () => window.removeEventListener("alum4k:session-expired", expire);
   }, []);
-  const filteredItems = useMemo(() => filterCatalog(items, catalog.filters, catalog.query), [items, catalog]);
+  const filteredItems = useMemo(() => filterCatalog(items, catalog.filters, catalog.query), [items, catalog.filters, catalog.query]);
   const relatedItems = useMemo(() => selected ? pickRelatedItems(selected, items) : [], [items, selected]);
   const years = useMemo(() => [...new Set(items.map((item) => item.year).filter((year): year is number => Boolean(year)))].sort((a, b) => b - a), [items]);
   function setFilters(filters: CatalogFilters) { navigate(catalogPath(filters, catalog.query)); }
+  function setPage(page: number, replace = false) {
+    const path = catalogPath(catalog.filters, catalog.query, page);
+    if (replace) { history.replaceState(history.state, "", path); applyLocation(); }
+    else navigate(path);
+  }
   function handleNav(category: string) { navigate(catalogPath({ ...defaultFilters, category }, "")); }
   function handleSearch(value: string) { navigate(catalogPath(catalog.filters, value.trim())); }
   function requestFilm(title = "") { setRequestTitle(title); if (currentUser) setRequestsOpen(true); else { setRequestAfterLogin(true); setAuthOpen(true); } }
@@ -543,6 +570,7 @@ export default function App() {
         : loading && pathname !== "/" ? <div className="empty-state">正在读取影视详情…</div>
         : catalog.filters.category === "首页" && !catalog.query ? <LatestHome items={items} loading={loading} onSelect={openFilm} onCategory={handleNav} />
         : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
+            page={catalog.page} onPage={setPage}
             genreValues={genreOptions(catalog.filters.category, items, catalog.filters.genre)}
             filters={catalog.filters} setFilters={setFilters} onSelect={openFilm} searchMode={Boolean(catalog.query)} searchTerm={catalog.query} years={years}
             onReset={() => setFilters({ ...defaultFilters, category: catalog.filters.category })} onRequest={() => requestFilm(catalog.query)} />}
