@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { fetchSettings } from "./api";
 import { defaultSettings, type SiteSettings, type SiteTheme } from "../shared/site";
 
@@ -8,10 +8,21 @@ function savedTheme(): PersonalTheme | null {
   try { const value = localStorage.getItem(themeKey); return value === "light" || value === "dark" ? value : null; }
   catch { return null; }
 }
-const SiteContext = createContext({ settings: defaultSettings, setSettings: (_settings: SiteSettings) => {}, theme: "dark" as SiteTheme, toggleTheme: () => {} });
+const SiteContext = createContext({ settings: defaultSettings, setSettings: (_settings: SiteSettings) => {}, settingsReady: false, settingsError: "", reloadSettings: async () => {}, theme: "dark" as SiteTheme, toggleTheme: () => {} });
 
 export function SiteProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(defaultSettings);
+  const [settingsReady, setSettingsReady] = useState(false);
+  const [settingsError, setSettingsError] = useState("");
+  const settingsRequest = useRef(0);
+  const reloadSettings = useCallback(async () => {
+    const request = ++settingsRequest.current;
+    setSettingsReady(false); setSettingsError("");
+    try {
+      const next = await fetchSettings();
+      if (request === settingsRequest.current) { setSettings(next); setSettingsReady(true); }
+    } catch { if (request === settingsRequest.current) setSettingsError("暂时无法读取站点设置，请重试。"); }
+  }, []);
   const [personalTheme, setPersonalTheme] = useState(savedTheme);
   const admin = /^\/admin(?:\/|$)/.test(location.pathname);
   const theme = !admin && personalTheme ? personalTheme : settings.branding.theme;
@@ -25,7 +36,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);
   }, []);
-  useEffect(() => { fetchSettings().then(setSettings).catch(() => undefined); }, []);
+  useEffect(() => { reloadSettings(); }, [reloadSettings]);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => {
     const title = settings.seo.title || settings.branding.name;
@@ -39,7 +50,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     if (!icon) { icon = document.createElement("link"); icon.rel = "icon"; document.head.append(icon); }
     icon.href = settings.branding.logo || "/brand.svg";
   }, [settings.branding, settings.seo, admin]);
-  return <SiteContext.Provider value={{ settings, setSettings, theme, toggleTheme }}>{children}</SiteContext.Provider>;
+  return <SiteContext.Provider value={{ settings, setSettings, settingsReady, settingsError, reloadSettings, theme, toggleTheme }}>{children}</SiteContext.Provider>;
 }
 
 export function useSite() { return useContext(SiteContext); }

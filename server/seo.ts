@@ -25,9 +25,10 @@ function replaceHead(html: string, settings: SiteSettings, item?: MediaItem, ori
   return html.slice(0, start) + head + html.slice(end + endMarker.length);
 }
 export async function renderPublicPage(settings: SiteSettings, origin: string, item?: MediaItem, missing = false) {
+  if (settings.access.requireLogin) { item = undefined; missing = false; }
   let html = replaceHead(await readFile(file, "utf8"), settings, item, origin, missing);
   const content = item ? `<article class="seo-content"><h1>${escapeHtml(item.title)}</h1><p>${escapeHtml([item.category, String(item.year ?? ""), item.region, ...item.genres].filter(Boolean).join(" · "))}</p><p>${escapeHtml(item.overview)}</p><p>主演：${escapeHtml(item.cast.join(" / "))}</p><p>${item.resources?.length ?? 0} 个下载资源</p><a href="/">返回影视目录</a></article>`
-    : missing ? '<main class="seo-content"><h1>影视不存在</h1><p>该影视不存在或已经删除。</p><a href="/">返回首页</a></main>' : '<main class="seo-content"><h1>影视目录</h1></main>';
+    : settings.access.requireLogin ? '<main class="seo-content"><h1>登录</h1><p>请登录后访问网站。</p></main>' : missing ? '<main class="seo-content"><h1>影视不存在</h1><p>该影视不存在或已经删除。</p><a href="/">返回首页</a></main>' : '<main class="seo-content"><h1>影视目录</h1></main>';
   html = html.replace(/<!--alum4k:content:start-->[\s\S]*?<!--alum4k:content:end-->/, () => `<!--alum4k:content:start-->${content}<!--alum4k:content:end-->`);
   return html;
 }

@@ -141,6 +141,15 @@ app.put("/api/admin/users/:username/vip", requireAdmin, async (request, response
   catch (error) { next(error); }
 });
 
+app.use("/api/media", async (request, response, next) => {
+  try {
+    if ((await loadSettings()).access.requireLogin && !await userFromRequest(request)) {
+      response.status(401).json({ message: "请先登录后访问网站。", code: "SITE_LOGIN_REQUIRED" }); return;
+    }
+    next();
+  } catch (error) { next(error); }
+});
+
 app.get("/api/media", async (request, response, next) => {
   try {
     const query = typeof request.query.q === "string" ? request.query.q : "";
@@ -167,23 +176,31 @@ app.put("/api/admin/resource-reports/:id", requireAdmin, async (request, respons
 
 app.get(["/movie/*", "/tv/*"], async (request, response, next) => {
   try {
+    const settings = await loadSettings();
+    response.setHeader("Cache-Control", "no-store");
+    if (settings.access.requireLogin) { response.type("html").send(await renderPublicPage(settings, siteOrigin(settings, request))); return; }
     const match = /^\/(movie|tv)\/([^/]+)\/?$/.exec(request.path);
     const item = match ? await findMedia(decodeURIComponent(match[2])) : undefined;
-    const found = item && item.mediaType === match?.[1]; const settings = await loadSettings();
-    response.setHeader("Cache-Control", "no-store");
+    const found = item && item.mediaType === match?.[1];
     response.status(found ? 200 : 404).type("html").send(await renderPublicPage(settings, siteOrigin(settings, request), found ? item : undefined, !found));
   } catch (error) { next(error); }
 });
 app.get(["/sitemap.xml", "/sitemap-:page.xml"], async (request, response, next) => {
   try {
-    const settings = await loadSettings(); const items = await loadLibrary(); const origin = siteOrigin(settings, request);
+    const settings = await loadSettings();
+    response.setHeader("Cache-Control", "no-store");
+    if (settings.access.requireLogin) { response.status(404).send("Sitemap not available"); return; }
+    const items = await loadLibrary(); const origin = siteOrigin(settings, request);
     const content = request.path === "/sitemap.xml" ? renderSitemapIndex(origin, items.length) : renderSitemap(origin, items, Number(request.params.page));
     response.setHeader("Cache-Control", "no-store"); if (!content) { response.status(404).send("Sitemap not found"); return; }
     response.type("application/xml").send(content);
   } catch (error) { next(error); }
 });
 app.get("/robots.txt", async (request, response, next) => {
-  try { response.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${siteOrigin(await loadSettings(), request)}/sitemap.xml\n`); } catch (error) { next(error); }
+  try {
+    const settings = await loadSettings(); response.setHeader("Cache-Control", "no-store");
+    response.type("text/plain").send(settings.access.requireLogin ? "User-agent: *\nDisallow: /\n" : `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${siteOrigin(settings, request)}/sitemap.xml\n`);
+  } catch (error) { next(error); }
 });
 
 app.post("/api/admin/media/batch", requireAdmin, async (request, response) => {

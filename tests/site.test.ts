@@ -1,6 +1,6 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia, paginateCatalog, catalogPageNumbers } from "../shared/catalog";
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
@@ -37,6 +37,53 @@ test("latest homepage groups use category and update date, limited to two rows",
   const items = [{ ...base, id: "old", createdAt: "2026-01-01" }, { ...base, id: "recent", updatedAt: "2026-10-08" }, { ...base, id: "tv", category: "电视剧", updatedAt: "2026-10-09" }, { ...base, id: "new", createdAt: "2026-10-01" }];
   assert.deepEqual(latestCategoryItems(items, "电影", 2).map((item) => item.id), ["recent", "new"]);
   assert.equal(latestCategoryItems(items, "综艺", 4).length, 0);
+});
+
+test("site login gate defaults off, persists, protects content and does not block accounts or admin", async () => {
+  const before = (await request("/api/settings")).body;
+  assert.deepEqual(before.access, { requireLogin: false });
+  assert.equal((await request("/api/media")).status, 200);
+  assert.equal((await request("/api/admin/settings", "PUT", { access: { requireLogin: true } }, userToken)).status, 403);
+  for (const access of [null, [], "true", { requireLogin: "true" }, { requireLogin: 1 }]) {
+    assert.equal((await request("/api/admin/settings", "PUT", { access }, adminToken)).status, 400);
+  }
+  try {
+    await writeFile(path.join(api.directory, "data/site-settings.json"), JSON.stringify({ ...before, access: undefined }));
+    assert.deepEqual((await request("/api/settings")).body.access, { requireLogin: false }, "existing settings without access field must remain public");
+    assert.equal((await request("/api/admin/settings", "PUT", { access: { requireLogin: true } }, adminToken)).status, 200);
+    assert.deepEqual((await request("/api/settings")).body.access, { requireLogin: true });
+    await request("/api/admin/settings", "PUT", { disclaimer: "访问测试声明" }, adminToken);
+    assert.equal((await request("/api/settings")).body.access.requireLogin, true, "unrelated updates must retain login gate");
+    for (const endpoint of ["/api/media", "/api/media?exact=1&q=验证电影", "/api/media/test-movie", "/api/media/nonexistent"]) {
+      for (const token of [undefined, "invalid-token"]) {
+        const result = await request(endpoint, "GET", undefined, token);
+        assert.equal(result.status, 401); assert.equal(result.body.code, "SITE_LOGIN_REQUIRED");
+        assert.equal(JSON.stringify(result.body).includes("验证电影"), false);
+      }
+      assert.ok([200, 404].includes((await request(endpoint, "GET", undefined, userToken)).status));
+    }
+    assert.equal((await request("/api/media/test-movie/resources/pan/reports", "POST", { reason: "other" })).status, 401);
+    assert.equal((await request("/api/media", "GET", undefined, adminToken)).status, 200);
+    const nonVip = (await request("/api/media/test-movie", "GET", undefined, userToken)).body.item;
+    assert.ok(nonVip.resources.every((resource: { url: string }) => resource.url === ""), "site access must not bypass VIP rules");
+    const login = await request("/api/auth/login", "POST", { username: "normal_user", password: "test-password" });
+    assert.equal(login.status, 200);
+    assert.equal((await request("/api/admin/invitations", "GET", undefined, adminToken)).status, 200);
+    const code = await invite();
+    assert.equal((await request("/api/auth/register", "POST", { username: "gate_member", password: "test-password", invitationCode: code })).status, 201);
+    for (const endpoint of ["/movie/test-movie", "/tv/missing"]) {
+      const response = await fetch(api.base + endpoint); const html = await response.text();
+      assert.equal(response.status, 200); assert.match(html, /noindex, nofollow/); assert.match(html, /请登录后访问网站/);
+      for (const value of ["验证电影", "影视资料和下载链接验证。", panUrl, magnetUrl]) assert.equal(html.includes(value), false);
+    }
+    assert.match(await readFile(path.join(api.directory, "dist/index.html"), "utf8"), /noindex, nofollow/);
+    for (const endpoint of ["/sitemap.xml", "/sitemap-1.xml"]) assert.equal((await fetch(api.base + endpoint)).status, 404);
+    assert.equal(await (await fetch(api.base + "/robots.txt")).text(), "User-agent: *\nDisallow: /\n");
+    await request("/api/admin/settings", "PUT", { access: { requireLogin: false } }, adminToken);
+    assert.equal((await request("/api/media")).status, 200);
+    assert.equal((await fetch(api.base + "/sitemap.xml")).status, 200);
+    assert.match(await (await fetch(api.base + "/movie/test-movie")).text(), /验证电影/);
+  } finally { await request("/api/admin/settings", "PUT", { access: before.access, disclaimer: before.disclaimer }, adminToken); }
 });
 
 test("registration hint defaults, persists, validates and requires administrator", async () => {

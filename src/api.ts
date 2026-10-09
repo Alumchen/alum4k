@@ -17,6 +17,7 @@ async function readJson<T>(url: string): Promise<T> {
   if (!response.ok) {
     expireSession(response, url, token);
     const detail = await response.json().catch(() => ({ message: response.statusText }));
+    if (detail.code === "SITE_LOGIN_REQUIRED") window.dispatchEvent(new Event("alum4k:login-required"));
     throw new Error(detail.message ?? response.statusText);
   }
   return (await response.json()) as T;
@@ -36,6 +37,7 @@ async function writeJson<T>(url: string, method: "POST" | "PUT" | "DELETE", body
   if (!response.ok) {
     expireSession(response, url, token);
     const detail = await response.json().catch(() => ({ message: response.statusText }));
+    if (detail.code === "SITE_LOGIN_REQUIRED") window.dispatchEvent(new Event("alum4k:login-required"));
     throw new Error(detail.message ?? response.statusText);
   }
 

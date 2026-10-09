@@ -29,7 +29,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { fetchCurrentUser, fetchMedia, fetchSettings, login, register, setAuthToken } from "./api";
+import { fetchCurrentUser, fetchMedia, login, register, setAuthToken } from "./api";
 import { copyText } from "./clipboard";
 import { BrandMark, useSite } from "./SiteContext";
 import Dialog from "./Dialog";
@@ -182,7 +182,7 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
   </header>;
 }
 
-function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user: User) => void }) {
+function AuthModal({ onClose, onAuthed, pageMode = false }: { onClose: () => void; onAuthed: (user: User) => void; pageMode?: boolean }) {
   const { settings } = useSite();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [username, setUsername] = useState("");
@@ -199,10 +199,10 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
     } catch (error) { setMessage(error instanceof Error ? error.message : "操作失败。"); }
     finally { setLoading(false); }
   }
-  return <Dialog title={mode === "login" ? "登录" : "注册"} onClose={onClose} className="auth-dialog">
-    <form className="auth-fields" onSubmit={submit}>
+  const title = mode === "login" ? "登录" : "注册";
+  const form = <form className="auth-fields" onSubmit={submit}>
       {mode === "register" && settings.registration.hint ? <p className="registration-hint">{settings.registration.hint}</p> : null}
-      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" placeholder="输入用户名" required maxLength={20} /></label>
+      <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" autoFocus={pageMode} placeholder="输入用户名" required maxLength={20} /></label>
       <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} placeholder="至少 6 位" required minLength={6} maxLength={128} /></label>
       {mode === "register" && settings.registration.requireInvitation !== false ? <label>邀请码<input required inputMode="numeric" pattern="[0-9]{8}" minLength={8} maxLength={8} value={invitationCode} onChange={(event) => setInvitationCode(event.target.value.replace(/\D/g, ""))} autoComplete="off" /></label> : null}
       {message ? <p className="form-error" role="alert">{message}</p> : null}
@@ -210,8 +210,9 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
       <button className="auth-switch" type="button" disabled={loading} onClick={() => { setMode(mode === "login" ? "register" : "login"); setPassword(""); setMessage(""); }}>
         {mode === "login" ? "没有账号？注册用户" : "已有账号？去登录"}
       </button>
-    </form>
-  </Dialog>;
+    </form>;
+  if (pageMode) return <main className="public-login-page"><div className="public-login-content"><div className="public-login-brand"><BrandMark /><span>{settings.branding.name}</span></div><section className="public-login-panel" aria-label={title}><h1>{title}</h1>{form}</section></div></main>;
+  return <Dialog title={title} onClose={onClose} className="auth-dialog">{form}</Dialog>;
 }
 
 function SiteFooter() {
@@ -490,6 +491,7 @@ function HomeView({
 }
 
 export default function App() {
+  const { settings, settingsReady, settingsError, reloadSettings } = useSite();
   const [items, setItems] = useState<MediaItem[]>([]);
   const [pathname, setPathname] = useState(location.pathname);
   const [catalog, setCatalog] = useState(() => readCatalogUrl(new URL(location.href)));
@@ -497,6 +499,7 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [authReady, setAuthReady] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [requestsOpen, setRequestsOpen] = useState(false);
@@ -509,7 +512,7 @@ export default function App() {
   const detailRoute = parseDetailPath(pathname);
   const selected = detailRoute ? items.find((item) => item.id === detailRoute.id && item.mediaType === detailRoute.mediaType) : undefined;
   const missing = !loading && !loadError && (pathname !== "/" && !selected);
-  usePageSeo(selected, missing, Boolean(catalog.query && !selected));
+  usePageSeo(selected, missing, Boolean(catalog.query && !selected), !settingsReady || !authReady || (settings.access.requireLogin && !currentUser));
 
   async function refreshLibrary() {
     const request = ++libraryRequest.current; setLoading(true); setLoadError("");
@@ -535,16 +538,25 @@ export default function App() {
     return () => { window.removeEventListener("popstate", pop); history.scrollRestoration = previous; };
   }, []);
   useEffect(() => {
-    refreshLibrary();
-    fetchCurrentUser().then(setCurrentUser).catch(() => undefined);
-    fetchSettings().then(({ announcement }) => { setAnnouncement(announcement); setNoticeOpen(shouldShowAnnouncement(announcement)); }).catch(() => undefined);
+    fetchCurrentUser().then(setCurrentUser).catch(() => undefined).finally(() => setAuthReady(true));
   }, []);
-  function clearSession() { libraryRequest.current++; setItems([]); setCurrentUser(null); setProfileOpen(false); setRequestsOpen(false); refreshLibrary(); }
+  useEffect(() => {
+    if (settingsReady) { setAnnouncement(settings.announcement); setNoticeOpen(shouldShowAnnouncement(settings.announcement)); }
+  }, [settingsReady, settings.announcement]);
+  useEffect(() => {
+    if (!settingsReady || !authReady) return;
+    if (settings.access.requireLogin && !currentUser) { libraryRequest.current++; setItems([]); setLoading(false); return; }
+    refreshLibrary();
+    return () => { libraryRequest.current++; };
+  }, [settingsReady, authReady, settings.access.requireLogin, currentUser?.username]);
+  function clearSession() { libraryRequest.current++; setItems([]); setCurrentUser(null); setProfileOpen(false); setRequestsOpen(false); }
   useEffect(() => {
     function expire() { clearSession(); setAuthOpen(true); }
+    function requireLogin() { clearSession(); reloadSettings(); }
     window.addEventListener("alum4k:session-expired", expire);
-    return () => window.removeEventListener("alum4k:session-expired", expire);
-  }, []);
+    window.addEventListener("alum4k:login-required", requireLogin);
+    return () => { window.removeEventListener("alum4k:session-expired", expire); window.removeEventListener("alum4k:login-required", requireLogin); };
+  }, [reloadSettings]);
   const filteredItems = useMemo(() => filterCatalog(items, catalog.filters, catalog.query), [items, catalog.filters, catalog.query]);
   const relatedItems = useMemo(() => selected ? pickRelatedItems(selected, items) : [], [items, selected]);
   const years = useMemo(() => [...new Set(items.map((item) => item.year).filter((year): year is number => Boolean(year)))].sort((a, b) => b - a), [items]);
@@ -557,6 +569,9 @@ export default function App() {
   function handleNav(category: string) { navigate(catalogPath({ ...defaultFilters, category }, "")); }
   function handleSearch(value: string) { navigate(catalogPath(catalog.filters, value.trim())); }
   function requestFilm(title = "") { setRequestTitle(title); if (currentUser) setRequestsOpen(true); else { setRequestAfterLogin(true); setAuthOpen(true); } }
+
+  if (!settingsReady || !authReady) return <main className="public-login-page"><div className="public-access-status" role={settingsError ? "alert" : "status"}><BrandMark /><span>{settingsError || "正在加载网站…"}</span>{settingsError ? <button type="button" className="primary-action" onClick={reloadSettings}>重试</button> : null}</div></main>;
+  if (settings.access.requireLogin && !currentUser) return <AuthModal pageMode onClose={() => setAuthOpen(false)} onAuthed={(user) => { setLoading(true); setCurrentUser(user); }} />;
 
   return <div className="app-shell">
     <Sidebar active={catalog.filters.category} onChange={handleNav} />
@@ -577,7 +592,7 @@ export default function App() {
       <SiteFooter />
     </main>
     <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(catalog.filters.category === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
-    {authOpen ? <AuthModal onClose={() => { setAuthOpen(false); setRequestAfterLogin(false); }} onAuthed={(user) => { setCurrentUser(user); refreshLibrary(); if (requestAfterLogin) { setRequestsOpen(true); setRequestAfterLogin(false); } }} /> : null}
+    {authOpen ? <AuthModal onClose={() => { setAuthOpen(false); setRequestAfterLogin(false); }} onAuthed={(user) => { setCurrentUser(user); if (requestAfterLogin) { setRequestsOpen(true); setRequestAfterLogin(false); } }} /> : null}
     {currentUser && profileOpen ? <ProfileDialog user={currentUser} onChange={setCurrentUser} onClose={() => setProfileOpen(false)} /> : null}
     {currentUser && requestsOpen ? <RequestsDialog initialTitle={requestTitle} onClose={() => setRequestsOpen(false)} /> : null}
     {boardOpen ? <BoardDialog onClose={() => setBoardOpen(false)} /> : null}
