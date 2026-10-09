@@ -43,7 +43,8 @@ try {
   assert.ok(await page.locator(".media-card .episode-status").count() > 0, "poster episode status must remain visible");
   assert.equal(await page.locator(".site-footer").count(), 0, "empty disclaimer must not show an empty footer");
   await capture(page, "home-desktop.png");
-  assert.equal(await page.locator(".latest-category").count(), 4);
+  assert.equal(await page.locator(".latest-category").count(), 3);
+  assert.deepEqual(await page.locator(".latest-category h2").allTextContents(), ["热播剧集", "热门电影", "热门动漫"]);
   assert.equal(await page.locator(".filters, .spotlight, .notice-board").count(), 0);
   assert.equal(await page.locator(".hot-carousel").count(), 0);
   const preview = await context.newPage();
@@ -56,12 +57,22 @@ try {
     await preview.waitForFunction(() => [...document.querySelectorAll(".latest-media-grid")].every((grid) => {
       const columns = getComputedStyle(grid).gridTemplateColumns.split(" ").length;
       return grid.children.length === columns * 2;
-    }) && document.querySelectorAll(".latest-media-grid").length === 4);
+    }) && document.querySelectorAll(".latest-media-grid").length === 3);
+    assert.deepEqual(await preview.locator(".latest-category h2").allTextContents(), ["热播剧集", "热门电影", "热门动漫"]);
+    assert.equal(await preview.locator(".latest-category .media-card").filter({ hasText: "综艺测试" }).count(), 0);
     const positions = await preview.locator(".latest-media-grid").first().locator(".media-card").evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
     assert.equal(new Set(positions).size, 2);
     await checkOverflow(preview, `latest homepage ${width}`);
     await capture(preview, `latest-home-${width}.png`);
   }
+  for (const [title, category] of [["热播剧集", "电视剧"], ["热门电影", "电影"], ["热门动漫", "动漫"]]) {
+    await preview.getByRole("region", { name: title, exact: true }).getByRole("button", { name: "更多", exact: true }).click();
+    await preview.waitForURL((url) => url.searchParams.get("category") === category);
+    assert.equal(await preview.getByRole("heading", { name: category, exact: true }).count(), 1);
+    await preview.goto(base);
+    await preview.getByRole("heading", { name: title, exact: true }).waitFor();
+  }
+  assert.equal(await preview.getByRole("button", { name: "综艺", exact: true }).count(), 1, "variety category navigation must remain available");
   await preview.close();
   const taxonomyContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const taxonomy = await taxonomyContext.newPage();
@@ -291,7 +302,7 @@ try {
   await carousel.getByRole("heading", { name: "管理员登录", exact: true }).waitFor();
   assert.equal(await carousel.evaluate(() => document.documentElement.dataset.theme), "dark");
   await carouselContext.close();
-  await page.getByRole("region", { name: "电影最新更新", exact: true }).getByRole("button", { name: "更多", exact: true }).click();
+  await page.getByRole("region", { name: "热门电影", exact: true }).getByRole("button", { name: "更多", exact: true }).click();
   await page.getByLabel("年份筛选", { exact: true }).selectOption("2024");
   await page.getByLabel("评分筛选", { exact: true }).selectOption("8");
   await page.getByLabel("资源状态筛选", { exact: true }).selectOption("有资源");

@@ -357,10 +357,10 @@ function LatestHome({ items, loading, onSelect, onCategory }: { items: MediaItem
     if (container.current) observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
-  return <div className="latest-home" ref={container}><HotCarousel items={promoted} onSelect={onSelect} />{["电视剧", "电影", "综艺", "动漫"].map((category) => {
+  return <div className="latest-home" ref={container}><HotCarousel items={promoted} onSelect={onSelect} />{[{ category: "电视剧", title: "热播剧集" }, { category: "电影", title: "热门电影" }, { category: "动漫", title: "热门动漫" }].map(({ category, title }) => {
     const latest = latestCategoryItems(items, category, columns * 2);
-    return <section className="latest-category" key={category} aria-label={`${category}最新更新`}>
-      <header className="latest-category-head"><h2>{category}</h2><button type="button" onClick={() => onCategory(category)}>更多<ChevronDown size={16} /></button></header>
+    return <section className="latest-category" key={category} aria-label={title}>
+      <header className="latest-category-head"><h2>{title}</h2><button type="button" onClick={() => onCategory(category)}>更多<ChevronDown size={16} /></button></header>
       {loading ? <div className="loading-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{Array.from({ length: columns * 2 }).map((_, index) => <div className="skeleton-card" key={index} />)}</div>
         : latest.length ? <div className="media-grid latest-media-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{latest.map((item) => <MediaCard item={item} key={item.id} onSelect={onSelect} />)}</div>
           : <p className="latest-empty">暂无{category}</p>}
