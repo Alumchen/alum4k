@@ -13,6 +13,7 @@ import { syncSiteHead, renderPublicPage, renderSitemap, renderSitemapIndex, site
 import { matchesExact } from "../shared/catalog";
 import { resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
 import { listReports, submitReport, updateReport } from "./reports";
+import { mergeSeasons, validateSeasonFields, selectedSeasonNumber, seasonStatus } from "../shared/seasons";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
@@ -62,6 +63,7 @@ function readMediaType(value: unknown): MediaType {
 }
 
 function validateResources(input: Partial<MediaItem>) {
+  validateSeasonFields(input);
   if (input.aliases !== undefined && (!Array.isArray(input.aliases) || input.aliases.length > 20 || input.aliases.some((value) => typeof value !== "string" || value.length > 100))) throw new Error("搜索别名最多 20 个，每个不超过 100 字。");
   if (!Array.isArray(input.resources)) return;
   if (input.resources.length > 500) throw new Error("每个条目最多保存 500 个下载链接。");
@@ -232,8 +234,12 @@ app.post("/api/admin/collect-tmdb", requireAdmin, async (request, response, next
     const mediaType = readMediaType(request.body?.mediaType);
     validateResources(request.body);
     const detail = await getTmdbDetail(mediaType, tmdbId);
+    const seasons = mergeSeasons(detail.seasons, request.body.seasons);
+    const selectedSeason = selectedSeasonNumber({ ...detail, seasons, selectedSeason: request.body.selectedSeason });
     response.status(201).json({ item: await upsertMedia({
       ...detail, ...request.body, tmdbId, mediaType, genres: detail.genres,
+      seasons: mediaType === "tv" ? seasons : undefined, selectedSeason, episodeCount: detail.episodeCount ?? request.body.episodeCount,
+      status: mediaType === "tv" ? seasonStatus(seasons.find((season) => season.number === selectedSeason), request.body.status || detail.status) : request.body.status || detail.status,
       resources: request.body.resources ?? [],
       episodes: detail.episodes
     }) });

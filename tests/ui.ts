@@ -190,6 +190,8 @@ try {
   assert.equal(await page.getByLabel("磁力链接", { exact: true }).count(), 1);
   assert.equal(await page.getByText("AList", { exact: true }).count(), 0);
   await page.getByLabel("类型标签", { exact: true }).fill("动画");
+  await page.getByLabel("影视集数", { exact: true }).fill("11");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全11集");
   await page.getByLabel("首页热播推送", { exact: true }).check();
   await page.getByText("资源详情", { exact: true }).first().click();
   await page.getByLabel("115 网盘链接1分辨率", { exact: true }).selectOption("2160p / 4K");
@@ -512,8 +514,81 @@ try {
   await member.getByRole("button", { name: "没有账号？注册用户", exact: true }).click();
   await member.getByLabel("邀请码", { exact: true }).waitFor();
   await memberContext.close();
+  const seriesInput = { id: "season-ui-show", title: "分季测试剧", mediaType: "tv", selectedSeason: 1, episodeCount: 40,
+    seasons: [{ number: 0, name: "特别篇", episodeCount: 2 }, { number: 1, name: "第一季", episodeCount: 11 }, { number: 2, name: "第二季", episodeCount: 8 }], resources: [
+      { id: "common", type: "115", title: "全季合集", url: "全季通用资源", access: "free" },
+      { id: "season-one", type: "115", title: "第一季", url: "第一季原样资源", seasonNumber: 1, access: "free" },
+      { id: "season-two", type: "115", title: "第二季", url: "第二季原样资源", seasonNumber: 2, access: "vip" },
+      { id: "season-two-magnet", type: "magnet", title: "第二季磁力", url: "第二季磁力资源", seasonNumber: 2, access: "vip" }
+    ] };
+  const seriesResult = await fetch(api.base + "/api/admin/media", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${auth.token}` }, body: JSON.stringify(seriesInput) });
+  assert.equal(seriesResult.status, 201);
+  await page.goto(base + "/admin");
+  await page.getByRole("button", { name: "编辑分季测试剧", exact: true }).click();
+  assert.equal(await page.getByLabel("后台选择季", { exact: true }).inputValue(), "1");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全11集");
+  await page.getByLabel("后台选择季", { exact: true }).selectOption("2");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全8集");
+  assert.equal(await page.getByLabel("115 网盘链接 2", { exact: true }).inputValue(), "第二季原样资源");
+  await page.getByLabel("影视集数", { exact: true }).fill("9");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全9集");
+  await page.getByLabel("状态", { exact: true }).fill("更新至5集");
+  await page.getByLabel("后台选择季", { exact: true }).selectOption("1");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全11集");
+  await page.getByLabel("后台选择季", { exact: true }).selectOption("2");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "更新至5集");
+  await page.getByRole("button", { name: "新增季", exact: true }).click();
+  assert.equal(await page.getByLabel("后台选择季", { exact: true }).inputValue(), "3");
+  assert.equal(await page.getByLabel("影视集数", { exact: true }).inputValue(), "");
+  await page.getByLabel("影视集数", { exact: true }).fill("6");
+  assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全6集");
+  await page.getByRole("button", { name: "添加115 网盘链接", exact: true }).click();
+  await page.getByLabel("115 网盘链接 2", { exact: true }).fill("第三季原样资源");
+  assert.equal(await page.getByLabel("115 网盘链接2所属季", { exact: true }).inputValue(), "3");
+  await page.getByLabel("后台选择季", { exact: true }).selectOption("1");
+  await page.getByRole("button", { name: "保存影视", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
+  await capture(page, "season-editor-desktop.png");
+  await page.goto(base + "/tv/season-ui-show");
+  await page.getByLabel("选择季", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("选择季", { exact: true }).inputValue(), "1");
+  assert.equal(await page.locator(".resource-plain-text").count(), 2);
+  await page.getByLabel("选择季", { exact: true }).selectOption("2");
+  await page.locator(".resource-plain-text").filter({ hasText: "第二季原样资源" }).waitFor();
+  assert.equal(await page.locator(".detail-season-bar > span").textContent(), "更新至5集");
+  assert.equal(await page.locator(".resource-plain-text").filter({ hasText: "第一季原样资源" }).count(), 0);
+  await page.getByRole("button", { name: "分享", exact: true }).click();
+  assert.equal(await page.evaluate(() => navigator.clipboard.readText()), base + "/tv/season-ui-show?season=2");
+  await page.reload();
+  await page.getByLabel("选择季", { exact: true }).waitFor();
+  assert.equal(await page.getByLabel("选择季", { exact: true }).inputValue(), "2");
+  await capture(page, "season-detail-desktop.png");
+  await page.getByRole("tab", { name: /磁力链接/ }).click();
+  assert.equal(await page.locator(".resource-plain-text").textContent(), "第二季磁力资源");
+  await page.getByLabel("选择季", { exact: true }).selectOption("3");
+  assert.equal(await page.locator(".detail-season-bar > span").textContent(), "全6集");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await checkOverflow(page, "season detail mobile"); await capture(page, "season-detail-mobile.png");
+  const seasonGuestContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const seasonGuest = await seasonGuestContext.newPage();
+  seasonGuest.on("pageerror", (error) => errors.push(error.message));
+  await seasonGuest.goto(base + "/tv/season-ui-show?season=2");
+  await seasonGuest.getByLabel("选择季", { exact: true }).waitFor();
+  assert.equal(await seasonGuest.locator(".resource-plain-text").textContent(), "全季通用资源");
+  assert.equal(await seasonGuest.locator(".locked-resource").count(), 1);
+  await seasonGuest.getByRole("button", { name: "登录/注册", exact: true }).click();
+  await seasonGuest.getByLabel("用户名", { exact: true }).fill("community_user");
+  await seasonGuest.getByLabel("密码", { exact: true }).fill("admin-reset-password");
+  await seasonGuest.getByRole("button", { name: "登录", exact: true }).click();
+  await seasonGuest.locator(".resource-plain-text").filter({ hasText: "第二季原样资源" }).waitFor();
+  assert.equal(await seasonGuest.locator(".locked-resource").count(), 0);
+  await seasonGuest.getByLabel("选择季", { exact: true }).selectOption("0");
+  assert.equal(await seasonGuest.locator(".detail-season-bar > span").textContent(), "全2集");
+  assert.equal(await seasonGuest.locator(".resource-plain-text").textContent(), "全季通用资源");
+  await checkOverflow(seasonGuest, "season selector VIP mobile");
+  await seasonGuestContext.close();
   assert.deepEqual(errors, []);
-  console.log("UI checks passed: hot carousel/push/rotation/pause, public theme toggle/persistence/admin isolation, stable menu emphasis, invitation policy toggle, automatic new-member VIP access, accounts/requests/bulletins/SEO, guest free links/VIP/copy and desktop/mobile layouts.");
+  console.log("UI checks passed: season selection/resources/counts/share/refresh/VIP, all-category episode status, hot carousel, themes, navigation, registration, accounts/requests/bulletins/SEO and desktop/mobile layouts.");
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error("Browser errors:", errors);

@@ -7,6 +7,9 @@ import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
 import { cleanResources } from "../src/ResourceEditor";
 import { resourceDisplayMetadata } from "../shared/resources";
+import { getSeasons, resourcesForSeason, seasonStatus, mergeSeasons, selectedSeasonNumber } from "../shared/seasons";
+import { mapTmdbDetail } from "../server/tmdb";
+import { normalizeMediaItem } from "../server/library";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
@@ -198,6 +201,61 @@ test("homepage promotion is administrator-owned and does not expose VIP resource
     assert.equal((await request(`/api/admin/media/${id}`, "PUT", { ...created.body.item, featured: false }, adminToken)).body.item.featured, false);
     assert.equal((await request(`/api/media/${id}`)).body.item.featured, false);
   } finally { await request(`/api/admin/media/${id}`, "DELETE", undefined, adminToken); }
+});
+
+test("TMDB season counts default to the selected season across all multi-episode categories", () => {
+  for (const [genre, category] of [["剧情", "电视剧"], ["真人秀", "综艺"], ["动画", "动漫"], ["儿童", "少儿"], ["纪录", "纪录片"]]) {
+    const item = mapTmdbDetail({ id: 321, name: "多季影视", genres: [{ id: 1, name: genre }], number_of_episodes: 40,
+      seasons: [{ season_number: 0, name: "特别篇", episode_count: 2 }, { season_number: 1, episode_count: 11 }, { season_number: 2, episode_count: 8 }] }, "tv");
+    assert.equal(item.category, category); assert.equal(item.selectedSeason, 1); assert.equal(item.status, "全11集");
+    assert.equal(item.episodeCount, 40); assert.equal(item.seasons?.[2].episodeCount, 8);
+  }
+  assert.equal(mapTmdbDetail({ id: 1, number_of_episodes: 40, seasons: [{ season_number: 1 }] }, "tv").status, "待更新");
+  assert.equal(mapTmdbDetail({ id: 1, number_of_episodes: 12 }, "tv").status, "全12集");
+  assert.equal(mapTmdbDetail({ id: 1 }, "movie").status, "正片");
+  for (const category of ["电视剧", "综艺", "动漫", "少儿", "纪录片", "短剧", "电影"]) {
+    assert.equal(normalizeMediaItem({ title: category, mediaType: "movie", categoryMode: "manual", category, episodeCount: 12, status: "待补资源" }).status, "全12集");
+  }
+  assert.equal(normalizeMediaItem({ title: "连载", mediaType: "tv", episodeCount: 12, status: "更新至3集" }).status, "更新至3集");
+});
+
+test("season selection preserves common links, specials and manual progress when TMDB refreshes", () => {
+  const resources = [{ id: "common" }, { id: "special", seasonNumber: 0 }, { id: "s1", seasonNumber: 1 }, { id: "s2", seasonNumber: 2 }];
+  assert.deepEqual(resourcesForSeason(resources, 1).map((resource) => resource.id), ["common", "s1"]);
+  assert.deepEqual(resourcesForSeason(resources, 0).map((resource) => resource.id), ["common", "special"]);
+  assert.equal(selectedSeasonNumber({ mediaType: "tv", resources }), 1);
+  assert.equal(selectedSeasonNumber({ mediaType: "tv", selectedSeason: 0, resources }), 0);
+  assert.equal(getSeasons({ mediaType: "movie", resources }).length, 0);
+  const merged = mergeSeasons([{ number: 1, name: "S1", episodeCount: 13 }, { number: 2, name: "S2", episodeCount: 9 }], [{ number: 1, name: "S1", episodeCount: 11, status: "全11集" }, { number: 2, name: "S2", episodeCount: 8, status: "更新至5集" }, { number: 3, name: "自建季", episodeCount: 6 }]);
+  assert.equal(seasonStatus(merged[0]), "全13集"); assert.equal(seasonStatus(merged[1]), "更新至5集"); assert.equal(merged[2].episodeCount, 6);
+});
+
+test("season resources survive saves and export while VIP protection and validation remain intact", async () => {
+  const input = { title: "分季接口测试", mediaType: "tv", selectedSeason: 1, seasons: [{ number: 0, name: "特别篇", episodeCount: 2 }, { number: 1, name: "S1", episodeCount: 11 }, { number: 2, name: "S2", episodeCount: 8 }], resources: [
+    { id: "common", type: "115", url: "通用内容", access: "free" },
+    { id: "s1", type: "115", url: panUrl, seasonNumber: 1, access: "free" },
+    { id: "s2", type: "115", url: panUrl, seasonNumber: 2, access: "vip", code: "privatecode" }
+  ] };
+  const saved = await request("/api/admin/media", "POST", input, adminToken);
+  assert.equal(saved.status, 201); const item = saved.body.item;
+  try {
+    assert.equal(item.status, "全11集"); assert.equal(item.resources.length, 3);
+    assert.deepEqual(item.resources.map((resource: { seasonNumber?: number }) => resource.seasonNumber), [undefined, 1, 2]);
+    const guest = (await request(`/api/media/${item.id}`)).body.item;
+    assert.equal(guest.resources[1].url, panUrl); assert.equal(guest.resources[2].url, ""); assert.equal(guest.resources[2].code, undefined); assert.equal(guest.resources[2].seasonNumber, 2);
+    assert.equal((await request(`/api/media/${item.id}`, "GET", undefined, userToken)).body.item.resources[2].url, "");
+    const changed = (await request(`/api/admin/media/${item.id}`, "PUT", { ...item, selectedSeason: 2, status: "", seasons: item.seasons }, adminToken)).body.item;
+    assert.equal(changed.status, "全8集"); assert.equal(changed.resources.length, 3);
+    for (const patch of [{ episodeCount: -1 }, { selectedSeason: 1.5 }, { seasons: [{ number: 1 }, { number: 1 }] }, { seasons: [{ number: 1, episodeCount: -3 }] }, { resources: [{ type: "115", url: "任意内容", seasonNumber: -1 }] }]) {
+      assert.equal((await request(`/api/admin/media/${item.id}`, "PUT", { ...changed, ...patch }, adminToken)).status, 400);
+    }
+    assert.equal((await request(`/api/media/${item.id}`)).body.item.selectedSeason, 2);
+    const exported = (await request("/api/media", "GET", undefined, adminToken)).body.items.find((entry: { id: string }) => entry.id === item.id);
+    assert.equal((await request("/api/admin/media/import", "POST", { items: [exported] }, adminToken)).status, 200);
+    assert.equal((await request(`/api/media/${item.id}`, "GET", undefined, adminToken)).body.item.resources[2].seasonNumber, 2);
+    const legacy = normalizeMediaItem({ title: "旧合集", mediaType: "tv", status: "全20集", resources: [{ id: "old", type: "115", title: "旧内容", url: "原样保留" }] });
+    assert.equal(legacy.status, "全20集"); assert.equal(legacy.resources?.[0].seasonNumber, undefined);
+  } finally { await request(`/api/admin/media/${item.id}`, "DELETE", undefined, adminToken); }
 });
 
 test("saving an unsaved TMDB draft or deleted entry creates it without stale-ID failures", async () => {

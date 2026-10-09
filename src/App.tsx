@@ -43,6 +43,7 @@ import SearchBox from "./SearchBox";
 import HotCarousel from "./HotCarousel";
 import usePageSeo from "./usePageSeo";
 import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
+import { getSeasons, isSeasonNumber, resourcesForSeason, seasonLabel, seasonStatus, selectedSeasonNumber } from "../shared/seasons";
 
 const navItems = [
   { label: "首页", icon: Home },
@@ -279,20 +280,36 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
   item: MediaItem; currentUser: User | null; relatedItems: MediaItem[]; onOpenAuth: () => void;
   onBack: () => void; onSelectRelated: (item: MediaItem) => void;
 }) {
-  const resources = item.resources ?? [];
+  const seasons = getSeasons(item);
+  const [seasonChoice, setSeasonChoice] = useState(() => {
+    const query = new URLSearchParams(location.search).get("season");
+    const number = query === null ? undefined : Number(query);
+    return isSeasonNumber(number) && seasons.some((season) => season.number === number) ? number : selectedSeasonNumber(item);
+  });
+  const seasonNumber = seasons.some((season) => season.number === seasonChoice) ? seasonChoice : selectedSeasonNumber(item);
+  const season = seasons.find((entry) => entry.number === seasonNumber);
+  const status = season ? seasonStatus(season, seasonNumber === item.selectedSeason ? item.status : "待更新") : item.status;
+  const resources = resourcesForSeason(item.resources ?? [], seasonNumber);
   const [shareMessage, setShareMessage] = useState("");
   const [resourceType, setResourceType] = useState<"115" | "magnet">("115");
+  function chooseSeason(number: number) {
+    setSeasonChoice(number);
+    const url = new URL(location.href); url.searchParams.set("season", String(number));
+    history.replaceState(history.state, "", url);
+    const next = resourcesForSeason(item.resources ?? [], number);
+    if (!next.some((resource) => resource.type === resourceType)) setResourceType(next.some((resource) => resource.type === "115") ? "115" : "magnet");
+  }
   useEffect(() => { setResourceType(resources.some((resource) => resource.type === "115") ? "115" : "magnet"); }, [item.id]);
   const visible = resources.filter((resource) => resource.type === resourceType);
   return <section className="detail-view">
-    <div className="detail-toolbar"><button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button><button type="button" className="share-film" title="复制影视网址" onClick={async () => { try { await copyText(location.origin + mediaPath(item)); setShareMessage("影视网址已复制"); } catch (error) { setShareMessage(error instanceof Error ? error.message : "复制失败。"); } }}><Share2 size={16} />分享</button>{shareMessage ? <span role="status">{shareMessage}</span> : null}</div>
+    <div className="detail-toolbar"><button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button><button type="button" className="share-film" title="复制影视网址" onClick={async () => { try { const url = new URL(mediaPath(item), location.origin); if (seasonNumber !== undefined) url.searchParams.set("season", String(seasonNumber)); await copyText(url.href); setShareMessage("影视网址已复制"); } catch (error) { setShareMessage(error instanceof Error ? error.message : "复制失败。"); } }}><Share2 size={16} />分享</button>{shareMessage ? <span role="status">{shareMessage}</span> : null}</div>
     <div className="detail-hero">
       {item.backdropPath ? <img src={item.backdropPath} alt="" /> : null}<div className="detail-shade" />
       <div className="detail-info">
-        <div className="detail-poster"><PosterImage item={item} /></div>
+        <div className="detail-poster"><PosterImage item={{ ...item, status, posterPath: season?.posterPath || item.posterPath }} /></div>
         <div className="detail-copy">
           <span className="detail-label">{item.category}</span><h1>{item.title}</h1>
-          <p className="detail-subtitle">{item.originalTitle ? item.originalTitle + " · " : ""}{item.year ?? "未知年份"} · {item.region} · {item.status}</p>
+          <p className="detail-subtitle">{item.originalTitle ? item.originalTitle + " · " : ""}{item.year ?? "未知年份"} · {item.region} · {seasonNumber !== undefined ? seasonLabel(seasonNumber) + " · " : ""}{status}</p>
           <div className="detail-tags">{item.rating ? <span>TMDB {item.rating}</span> : null}{item.genres.map((genre) => <span key={genre}>{genre}</span>)}</div>
           <p className="overview">{item.overview}</p>
           {item.cast.length ? <p className="cast-line">主演：{item.cast.join(" / ")}</p> : null}
@@ -303,6 +320,7 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
     <div className="watch-layout download-only-layout">
       <section className="download-panel">
         <div className="panel-title"><span>下载资源</span><small>{resources.length} 条</small></div>
+        {seasons.length ? <div className="detail-season-bar"><label>选择季<select aria-label="选择季" value={seasonNumber} onChange={(event) => chooseSeason(Number(event.target.value))}>{seasons.map((entry) => <option key={entry.number} value={entry.number}>{seasonLabel(entry.number)}{entry.episodeCount ? ` · ${entry.episodeCount}集` : ""}</option>)}</select></label><span>{status}</span></div> : null}
         <div className="download-type-tabs" role="tablist" aria-label="下载方式">
           {(["115", "magnet"] as const).map((type) => <button key={type} type="button" role="tab" aria-selected={resourceType === type}
             className={classNames(resourceType === type && "active")} onClick={() => setResourceType(type)}>

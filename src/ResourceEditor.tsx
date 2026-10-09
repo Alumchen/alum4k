@@ -1,23 +1,25 @@
 import { Plus, Trash2 } from "lucide-react";
 import type { DownloadResource } from "./types";
 import { resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
+import { resourcesForSeason, seasonLabel, type MediaSeason } from "../shared/seasons";
 
 export function cleanResources(resources: DownloadResource[] = []) {
   return resources.filter((resource) => resource.url.trim());
 }
 
-export default function ResourceEditor({ resources, defaultAccess, onChange }: {
+export default function ResourceEditor({ resources, defaultAccess, onChange, seasons = [], selectedSeason }: {
   resources: DownloadResource[]; defaultAccess: "free" | "vip"; onChange: (resources: DownloadResource[]) => void;
+  seasons?: MediaSeason[]; selectedSeason?: number;
 }) {
   function empty(type: "115" | "magnet", id: string): DownloadResource {
-    return { id, type, title: type === "115" ? "115网盘" : "磁力链接", url: "", access: defaultAccess };
+    return { id, type, title: type === "115" ? "115网盘" : "磁力链接", url: "", access: defaultAccess, seasonNumber: selectedSeason };
   }
   function update(resource: DownloadResource, patch: Partial<DownloadResource>) {
     onChange(resources.some((entry) => entry.id === resource.id) ? resources.map((entry) => entry.id === resource.id ? { ...entry, ...patch } : entry) : [...resources, { ...resource, ...patch }]);
   }
   return <div className="download-editor-grid">{(["115", "magnet"] as const).map((type) => {
-    const existing = resources.filter((resource) => resource.type === type);
-    const rows = existing.length ? existing : [empty(type, `empty-${type}`)];
+    const existing = resourcesForSeason(resources, selectedSeason).filter((resource) => resource.type === type);
+    const rows = existing.length ? existing : [empty(type, `empty-${type}-${selectedSeason ?? "common"}`)];
     const label = type === "115" ? "115 网盘链接" : "磁力链接";
     return <section className="resource-editor-group" key={type}>
       <header><h4>{type === "115" ? "115 网盘" : "磁力链接"}</h4><button type="button" title={`添加${label}`} aria-label={`添加${label}`} disabled={resources.length >= 500}
@@ -27,6 +29,7 @@ export default function ResourceEditor({ resources, defaultAccess, onChange }: {
         <label className="resource-url-field">{label}<textarea aria-label={rows.length === 1 ? label : `${label} ${index + 1}`} value={resource.url} rows={3}
           onChange={(event) => update(resource, { url: event.target.value, availability: "unknown", verifiedAt: undefined })} placeholder={type === "115" ? "粘贴 115 网盘链接" : "粘贴磁力链接"} /></label>
         <div className="resource-editor-options"><label>查看权限<select aria-label={`${label}${index + 1}查看权限`} value={resource.access ?? defaultAccess} onChange={(event) => update(resource, { access: event.target.value as "free" | "vip" })}><option value="free">免费查看</option><option value="vip">VIP 查看</option></select></label>
+          {seasons.length ? <label>所属季<select aria-label={`${label}${index + 1}所属季`} value={resource.seasonNumber ?? "common"} onChange={(event) => update(resource, { seasonNumber: event.target.value === "common" ? undefined : Number(event.target.value) })}><option value="common">通用 / 合集</option>{seasons.map((season) => <option key={season.number} value={season.number}>{seasonLabel(season.number)}</option>)}</select></label> : null}
           {type === "115" ? <label>提取码<input aria-label={`${label}${index + 1}提取码`} value={resource.code ?? ""} onChange={(event) => update(resource, { code: event.target.value })} maxLength={32} /></label> : null}</div>
         <details><summary>资源详情</summary><div className="resource-editor-options"><label>名称<input maxLength={160} value={resource.title} onChange={(event) => update(resource, { title: event.target.value })} /></label><label>大小<input maxLength={80} value={resource.size ?? ""} onChange={(event) => update(resource, { size: event.target.value })} /></label>
           {([ ["分辨率", "resolution", resolutions], ["动态范围", "dynamicRange", dynamicRanges], ["视频编码", "videoCodec", videoCodecs] ] as const).map(([name, key, options]) => <label key={key}>{name}<select aria-label={`${label}${index + 1}${name}`} value={resource[key] || ""} onChange={(event) => update(resource, { [key]: event.target.value })}><option value="">未填写</option>{options.map((value) => <option key={value}>{value}</option>)}</select></label>)}

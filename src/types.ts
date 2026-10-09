@@ -21,6 +21,7 @@ export interface DownloadResource extends ResourceDetails {
   access?: "free" | "vip";
 }
 import type { ResourceDetails } from "../shared/resources";
+import type { MediaSeason } from "../shared/seasons";
 
 export interface ResourceCheckResult {
   ok: boolean;
@@ -72,6 +73,9 @@ export interface MediaItem {
   region: string;
   access: "免费" | "会员" | "VIP";
   status: string;
+  seasons?: MediaSeason[];
+  selectedSeason?: number;
+  episodeCount?: number;
   rating?: number;
   genres: string[];
   cast: string[];

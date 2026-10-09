@@ -1,4 +1,5 @@
 import type { ResourceDetails } from "../shared/resources";
+import type { MediaSeason } from "../shared/seasons";
 export type MediaType = "movie" | "tv";
 export type SourceType = "pan115" | "alist" | "direct";
 export type DownloadResourceType = "115" | "magnet";
@@ -46,6 +47,9 @@ export interface MediaItem {
   region: string;
   access: "免费" | "会员" | "VIP";
   status: string;
+  seasons?: MediaSeason[];
+  selectedSeason?: number;
+  episodeCount?: number;
   rating?: number;
   genres: string[];
   cast: string[];

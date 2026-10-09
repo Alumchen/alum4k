@@ -3,6 +3,7 @@ export const dynamicRanges = ["SDR", "HDR10", "HDR10+", "Dolby Vision", "HLG"] a
 export const videoCodecs = ["H.264 / AVC", "H.265 / HEVC", "AV1", "其他"] as const;
 export const availabilityLabels = { unknown: "未核验", available: "管理员确认可用", invalid: "已失效" };
 export interface ResourceDetails {
+  seasonNumber?: number;
   resolution?: string;
   dynamicRange?: string;
   videoCodec?: string;

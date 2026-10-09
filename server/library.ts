@@ -4,6 +4,7 @@ import path from "node:path";
 import { classifyMedia } from "../shared/media";
 import type { DownloadResource, MediaItem } from "./types";
 import { normalizeResourceDetails } from "../shared/resources";
+import { getSeasons, isSeasonNumber, isEpisodeCount, selectedSeasonNumber, seasonStatus, episodeStatus, validateSeasonFields } from "../shared/seasons";
 
 const libraryFile = path.resolve(process.cwd(), "data", "library.json");
 let pendingWrite: Promise<unknown> = Promise.resolve();
@@ -40,7 +41,8 @@ function normalizeResources(input: Partial<MediaItem>): DownloadResource[] {
     if (!resource || !["115", "magnet"].includes(resource.type)) return [];
     const url = typeof resource.url === "string" ? resource.url : "";
     if (!url.trim()) return [];
-    const key = `${resource.type}:${url}`;
+    const seasonNumber = input.mediaType === "tv" && isSeasonNumber(resource.seasonNumber) ? resource.seasonNumber : undefined;
+    const key = `${resource.type}:${seasonNumber ?? "common"}:${url}`;
     if (seenUrls.has(key)) return [];
     seenUrls.add(key);
     const preferredId = cleanText(resource.id, `res-${index + 1}`);
@@ -52,6 +54,7 @@ function normalizeResources(input: Partial<MediaItem>): DownloadResource[] {
       ...normalizeResourceDetails(resource),
       id,
       type: resource.type,
+      seasonNumber,
       title: cleanText(resource.title, resource.type === "magnet" ? "磁力链接" : "115网盘"),
       url,
       code: cleanText(resource.code),
@@ -70,9 +73,15 @@ function imageUrl(value: string | undefined, size: string) {
 
 function publicMedia(item: MediaItem): MediaItem {
   const categoryMode = item.categoryMode ?? (["电影", "电视剧"].includes(item.category) ? "auto" : "manual");
+  const seasons = getSeasons(item);
+  const selectedSeason = selectedSeasonNumber({ ...item, seasons });
   return {
     ...item,
     categoryMode,
+    seasons: item.mediaType === "tv" ? seasons : undefined,
+    selectedSeason,
+    episodeCount: isEpisodeCount(item.episodeCount) ? item.episodeCount : undefined,
+    status: seasons.length ? seasonStatus(seasons.find((season) => season.number === selectedSeason), item.status) : episodeStatus(item.mediaType, item.episodeCount, item.status),
     category: categoryMode === "auto" ? classifyMedia(item) : item.category,
     source: undefined,
     episodes: (item.episodes ?? []).map((episode) => ({ ...episode, source: undefined })),
@@ -105,7 +114,13 @@ export async function findMedia(id: string) {
 }
 
 export function normalizeMediaItem(input: Partial<MediaItem>, existingIds: string[] = [], currentId?: string): MediaItem {
+  validateSeasonFields(input);
   const mediaType = input.mediaType === "movie" ? "movie" : "tv";
+  const seasons = getSeasons({ ...input, mediaType }).map((season) => ({ number: season.number, name: cleanText(season.name), episodeCount: season.episodeCount, status: cleanText(season.status), airDate: cleanText(season.airDate), posterPath: cleanText(season.posterPath) }));
+  const selectedSeason = selectedSeasonNumber({ ...input, mediaType, seasons });
+  const currentSeason = seasons.find((season) => season.number === selectedSeason);
+  const customStatus = cleanText(input.status);
+  if (currentSeason && customStatus && !/^全\d+集$|^待/.test(customStatus) && !currentSeason.status) currentSeason.status = customStatus;
   const title = cleanText(input.title);
   if (!title) throw new Error("请填写影视标题。");
   const preferredId = safeId(input.id ?? "") || (input.tmdbId ? `tmdb-${mediaType}-${input.tmdbId}` : safeId(title)) || `media-${Date.now()}`;
@@ -129,7 +144,10 @@ export function normalizeMediaItem(input: Partial<MediaItem>, existingIds: strin
     updatedAt: new Date().toISOString(),
     region: cleanText(input.region, "其他"),
     access: input.access === "免费" || input.access === "VIP" ? input.access : "会员",
-    status: cleanText(input.status, mediaType === "movie" ? "正片" : "待更新"),
+    status: currentSeason ? seasonStatus(currentSeason) : episodeStatus(mediaType, input.episodeCount, input.status),
+    seasons: mediaType === "tv" ? seasons : undefined,
+    selectedSeason,
+    episodeCount: input.episodeCount,
     rating: cleanNumber(input.rating),
     genres,
     cast: ensureArray(input.cast),
@@ -152,7 +170,7 @@ function saveItem(items: MediaItem[], input: Partial<MediaItem>, currentId?: str
   const next = normalizeMediaItem({ ...input, id: existing?.id ?? input.id, createdAt: existing?.createdAt ?? input.createdAt }, items.map((item) => item.id), existing?.id);
   next.resources = next.resources?.map((resource) => {
     const old = existing ? normalizeResources(existing).find((entry) => entry.id === resource.id) : undefined;
-    const fields = ["url", "code", "title", "size", "note", "access", "resolution", "dynamicRange", "videoCodec", "subtitles", "audio", "availability"] as const;
+    const fields = ["url", "code", "title", "size", "note", "access", "seasonNumber", "resolution", "dynamicRange", "videoCodec", "subtitles", "audio", "availability"] as const;
     const unchanged = old && fields.every((key) => (old[key] ?? "") === (resource[key] ?? ""));
     const sameLink = old?.url === resource.url;
     const checked = resource.availability !== "unknown";

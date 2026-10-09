@@ -2,6 +2,7 @@ import https from "node:https";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import type { MediaItem, MediaType } from "./types";
 import { classifyMedia } from "../shared/media";
+import { isEpisodeCount, seasonLabel, seasonStatus, selectedSeasonNumber, type MediaSeason } from "../shared/seasons";
 
 const API_BASE = "https://api.themoviedb.org/3";
 const IMAGE_BASE = "https://image.tmdb.org/t/p";
@@ -41,6 +42,8 @@ interface TmdbDetail {
   };
   production_countries?: Array<{ iso_3166_1: string; name: string }>;
   origin_country?: string[];
+  number_of_episodes?: number | null;
+  seasons?: Array<{ season_number: number; name?: string; episode_count?: number | null; air_date?: string; poster_path?: string }>;
 }
 
 function getAuth() {
@@ -176,6 +179,8 @@ export function mapTmdbSearchResult(result: TmdbSearchResult): MediaItem | null 
 
 export function mapTmdbDetail(detail: TmdbDetail, mediaType: MediaType): MediaItem {
   const genres = detail.genres?.map((genre) => genre.name) ?? [];
+  const seasons: MediaSeason[] = mediaType === "tv" ? (detail.seasons ?? []).map((season) => ({ number: season.season_number, name: season.name || seasonLabel(season.season_number), episodeCount: isEpisodeCount(season.episode_count) ? season.episode_count : undefined, airDate: season.air_date || undefined, posterPath: imageUrl(season.poster_path, "w500") })) : [];
+  const selectedSeason = selectedSeasonNumber({ mediaType, seasons });
   return {
     id: `tmdb-${mediaType}-${detail.id}`,
     tmdbId: detail.id,
@@ -187,7 +192,10 @@ export function mapTmdbDetail(detail: TmdbDetail, mediaType: MediaType): MediaIt
     categoryMode: "auto",
     region: regionFrom(detail),
     access: "会员",
-    status: mediaType === "movie" ? "待绑定片源" : "待绑定剧集",
+    status: mediaType === "movie" ? "正片" : seasonStatus(seasons.find((season) => season.number === selectedSeason), selectedSeason === undefined && detail.number_of_episodes ? `全${detail.number_of_episodes}集` : "待更新"),
+    seasons: mediaType === "tv" ? seasons : undefined,
+    selectedSeason,
+    episodeCount: mediaType === "tv" && isEpisodeCount(detail.number_of_episodes) ? detail.number_of_episodes : undefined,
     rating: detail.vote_average ? Number(detail.vote_average.toFixed(1)) : undefined,
     genres,
     cast: detail.credits?.cast?.slice(0, 6).map((person) => person.name) ?? [],
