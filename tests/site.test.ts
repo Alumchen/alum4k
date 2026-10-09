@@ -184,6 +184,22 @@ test("media save supports automatic and manual classification without TMDB dupli
   assert.equal((await request(`/api/media/${saved.body.item.id}`, "GET", undefined, adminToken)).body.item.category, "动漫");
 });
 
+test("homepage promotion is administrator-owned and does not expose VIP resource links", async () => {
+  const draft = { title: "热播推送验证", mediaType: "movie", featured: false, resources: [{ type: "115", url: panUrl, access: "vip" }] };
+  const created = await request("/api/admin/media", "POST", draft, adminToken);
+  assert.equal(created.status, 201);
+  const id = created.body.item.id;
+  try {
+    assert.equal((await request(`/api/admin/media/${id}`, "PUT", { ...created.body.item, featured: true }, userToken)).status, 403);
+    assert.equal((await request(`/api/admin/media/${id}`, "PUT", { ...created.body.item, featured: true }, adminToken)).body.item.featured, true);
+    const promoted = (await request(`/api/media/${id}`)).body.item;
+    assert.equal(promoted.featured, true);
+    assert.equal(promoted.resources[0].url, "");
+    assert.equal((await request(`/api/admin/media/${id}`, "PUT", { ...created.body.item, featured: false }, adminToken)).body.item.featured, false);
+    assert.equal((await request(`/api/media/${id}`)).body.item.featured, false);
+  } finally { await request(`/api/admin/media/${id}`, "DELETE", undefined, adminToken); }
+});
+
 test("saving an unsaved TMDB draft or deleted entry creates it without stale-ID failures", async () => {
   const input = { id: "tmdb-movie-777777", title: "未入库采集条目", tmdbId: 777777, mediaType: "movie", resources: [{ id: "raw", type: "115", url: "随便填写\n分享文字", access: "free" }] };
   assert.equal((await request(`/api/admin/media/${input.id}`, "PUT", input, userToken)).status, 403);

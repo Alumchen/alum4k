@@ -42,6 +42,7 @@ try {
   await capture(page, "home-desktop.png");
   assert.equal(await page.locator(".latest-category").count(), 4);
   assert.equal(await page.locator(".filters, .spotlight, .notice-board").count(), 0);
+  assert.equal(await page.locator(".hot-carousel").count(), 0);
   const preview = await context.newPage();
   preview.on("pageerror", (error) => errors.push(error.message));
   const template = (await (await fetch(api.base + "/api/media")).json()).items[0];
@@ -59,6 +60,102 @@ try {
     await capture(preview, `latest-home-${width}.png`);
   }
   await preview.close();
+  const carouselContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const carousel = await carouselContext.newPage();
+  carousel.on("pageerror", (error) => errors.push(error.message));
+  const promotions = [
+    { ...template, id: "hot-new", title: "正在热播新片", featured: true, updatedAt: "2026-10-09T08:00:00Z" },
+    { ...template, id: "hot-old", title: "另一部热播电影", featured: true, updatedAt: "2026-10-08T08:00:00Z" },
+    { ...template, id: "not-promoted", title: "未推送影视", featured: false }
+  ];
+  await carousel.route("**/api/media", (route) => route.fulfill({ json: { items: promotions } }));
+  // A local bitmap keeps carousel layout checks independent of the image CDN.
+  await carousel.goto(base);
+  const landscape = await carousel.evaluate(() => {
+    const canvas = document.createElement("canvas"); canvas.width = 1280; canvas.height = 720;
+    const painter = canvas.getContext("2d")!;
+    painter.fillStyle = "#567f75"; painter.fillRect(0, 0, 1280, 720);
+    painter.fillStyle = "#b8cbd1"; painter.fillRect(850, 0, 430, 720);
+    painter.fillStyle = "#efdbbb"; painter.fillRect(650, 140, 150, 480);
+    return canvas.toDataURL("image/png");
+  });
+  promotions.forEach((film) => { film.backdropPath = landscape; });
+  await carousel.reload();
+  await carousel.getByRole("heading", { name: "正在热播新片", exact: true }).waitFor();
+  assert.equal(await carousel.locator(".hot-pages button").count(), 2);
+  assert.equal(await carousel.locator(".hot-backdrop").evaluate((image) => (image as HTMLImageElement).naturalWidth), 1280);
+  assert.equal(await carousel.locator(".topbar").evaluate((element) => getComputedStyle(element).backgroundColor), await carousel.locator(".app-shell").evaluate((element) => getComputedStyle(element).backgroundColor));
+  await carousel.getByRole("button", { name: "暂停自动轮播", exact: true }).click();
+  await carousel.getByRole("button", { name: "下一部", exact: true }).click();
+  await carousel.getByRole("heading", { name: "另一部热播电影", exact: true }).waitFor();
+  await carousel.getByRole("button", { name: "上一部", exact: true }).click();
+  await carousel.getByRole("heading", { name: "正在热播新片", exact: true }).waitFor();
+  const menu = carousel.locator(".sidebar").getByRole("button", { name: "电影", exact: true });
+  await menu.hover();
+  await carousel.waitForFunction(() => getComputedStyle(document.querySelectorAll(".nav-item > span")[2]).transform !== "none");
+  const bounds = await menu.boundingBox();
+  await carousel.mouse.move(1200, 800);
+  assert.deepEqual(await menu.boundingBox(), bounds, "menu emphasis must not move adjacent items");
+  await capture(carousel, "hot-carousel-dark-desktop.png");
+  await carousel.getByRole("button", { name: "切换浅色背景", exact: true }).click();
+  await carousel.waitForFunction(() => document.documentElement.dataset.theme === "light");
+  const lightText = await carousel.locator(".media-title").first().evaluate((element) => getComputedStyle(element).color);
+  await carousel.reload();
+  await carousel.getByRole("button", { name: "切换深色背景", exact: true }).waitFor();
+  assert.equal(await carousel.evaluate(() => document.documentElement.dataset.theme), "light");
+  await capture(carousel, "hot-carousel-light-desktop.png");
+  await carousel.getByRole("button", { name: "切换深色背景", exact: true }).click();
+  await carousel.waitForFunction(() => document.documentElement.dataset.theme === "dark");
+  assert.notEqual(await carousel.locator(".media-title").first().evaluate((element) => getComputedStyle(element).color), lightText);
+  await carousel.clock.install();
+  await carousel.mouse.move(1400, 980);
+  await carousel.getByPlaceholder("搜索影视名", { exact: true }).focus();
+  await carousel.clock.fastForward(6700);
+  await carousel.getByRole("heading", { name: "另一部热播电影", exact: true }).waitFor();
+  await carousel.getByRole("button", { name: "暂停自动轮播", exact: true }).click();
+  await carousel.clock.fastForward(20000);
+  assert.equal(await carousel.locator(".hot-copy h1").textContent(), "另一部热播电影");
+  await carousel.getByRole("button", { name: "展示正在热播新片", exact: true }).click();
+  for (const width of [390, 320]) {
+    await carousel.setViewportSize({ width, height: 844 });
+    await checkOverflow(carousel, `hot carousel ${width}`);
+    const action = await carousel.locator(".hot-detail").boundingBox();
+    const controls = await carousel.locator(".hot-controls").boundingBox();
+    assert.ok(action && controls && action.y + action.height <= controls.y, "carousel controls must not overlap film details");
+    await carousel.getByRole("button", { name: "切换浅色背景", exact: true }).click();
+    await carousel.getByRole("button", { name: "切换深色背景", exact: true }).waitFor();
+    await capture(carousel, `hot-carousel-light-${width}.png`);
+    await carousel.getByRole("button", { name: "切换深色背景", exact: true }).click();
+    await carousel.getByRole("button", { name: "切换浅色背景", exact: true }).waitFor();
+  }
+  promotions[0].title = "特别长的热播电影名称以及电影系列最终章 ExtendedCinemaTitleWithoutSpaces";
+  promotions[0].overview = "这是一段较长的影视简介，用来确认不同屏幕宽度下文字不会覆盖底部轮播控制按钮。".repeat(10);
+  promotions[0].backdropPath = base + "/broken-hero.png";
+  promotions[0].posterPath = landscape;
+  await carousel.route("**/broken-hero.png", (route) => route.fulfill({ status: 404, body: "not found" }));
+  await carousel.emulateMedia({ reducedMotion: "reduce" });
+  await carousel.reload();
+  await carousel.getByRole("button", { name: "开始自动轮播", exact: true }).waitFor();
+  await carousel.waitForFunction(() => (document.querySelector(".hot-backdrop") as HTMLImageElement)?.naturalWidth === 1280);
+  await carousel.clock.fastForward(20000);
+  assert.equal(await carousel.locator(".hot-copy h1").textContent(), promotions[0].title);
+  for (const width of [1440, 390, 320]) {
+    await carousel.setViewportSize({ width, height: 844 });
+    const action = await carousel.locator(".hot-detail").boundingBox();
+    const controls = await carousel.locator(".hot-controls").boundingBox();
+    assert.ok(action && controls && action.y + action.height <= controls.y, "long movie titles must not overlap carousel controls");
+    await checkOverflow(carousel, `long carousel title ${width}`);
+    await capture(carousel, `hot-carousel-long-title-${width}.png`);
+  }
+  await carousel.locator(".hot-detail").click();
+  assert.ok(carousel.url().endsWith("/movie/hot-new"));
+  assert.equal(await carousel.locator(".hot-carousel").count(), 0);
+  await carousel.getByRole("button", { name: "切换浅色背景", exact: true }).click();
+  await carousel.getByRole("button", { name: "切换深色背景", exact: true }).waitFor();
+  await carousel.goto(base + "/admin");
+  await carousel.getByRole("heading", { name: "管理员登录", exact: true }).waitFor();
+  assert.equal(await carousel.evaluate(() => document.documentElement.dataset.theme), "dark");
+  await carouselContext.close();
   await page.getByRole("region", { name: "电影最新更新", exact: true }).getByRole("button", { name: "更多", exact: true }).click();
   await page.getByLabel("年份筛选", { exact: true }).selectOption("2024");
   await page.getByLabel("评分筛选", { exact: true }).selectOption("8");
@@ -93,6 +190,7 @@ try {
   assert.equal(await page.getByLabel("磁力链接", { exact: true }).count(), 1);
   assert.equal(await page.getByText("AList", { exact: true }).count(), 0);
   await page.getByLabel("类型标签", { exact: true }).fill("动画");
+  await page.getByLabel("首页热播推送", { exact: true }).check();
   await page.getByText("资源详情", { exact: true }).first().click();
   await page.getByLabel("115 网盘链接1分辨率", { exact: true }).selectOption("2160p / 4K");
   await page.getByLabel("115 网盘链接1动态范围", { exact: true }).selectOption("HDR10");
@@ -118,6 +216,8 @@ try {
   await page.reload();
   await page.locator(".media-card").first().waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
+  await page.locator(".hot-carousel").getByRole("heading", { name: "验证电影", exact: true }).waitFor();
+  assert.equal(await page.locator(".hot-controls").count(), 0);
   await page.locator(".media-card").filter({ hasText: "验证电影" }).click();
   await page.locator(".resource-meta-quality").filter({ hasText: "2160p / 4K" }).waitFor();
   assert.equal(await page.locator(".resource-meta-size").textContent(), "18 GB");
@@ -349,6 +449,7 @@ try {
   await page.getByRole("button", { name: "媒体库", exact: true }).click();
   await page.getByRole("button", { name: "编辑验证电影", exact: true }).click();
   const rawText = "  任意分享内容\nhttps://example.com/download 提取码：Ab12  ";
+  await page.getByLabel("首页热播推送", { exact: true }).uncheck();
   await page.getByLabel("115 网盘链接", { exact: true }).fill(rawText);
   await page.getByLabel("115 网盘链接1提取码", { exact: true }).fill("");
   await page.getByLabel("磁力链接", { exact: true }).fill("javascript:alert(1)");
@@ -358,6 +459,7 @@ try {
   await page.getByRole("button", { name: "保存影视", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
   await page.goto(base);
+  assert.equal(await page.locator(".hot-carousel").count(), 0);
   await page.locator(".media-card").filter({ hasText: "验证电影" }).click();
   assert.equal(await page.locator(".resource-plain-text").textContent(), rawText);
   assert.equal(await page.locator(".resource-url-line a").count(), 0);
@@ -411,7 +513,7 @@ try {
   await member.getByLabel("邀请码", { exact: true }).waitFor();
   await memberContext.close();
   assert.deepEqual(errors, []);
-  console.log("UI checks passed: invitation policy toggle, automatic new-member VIP access, invitations/registration/centered login, profiles/avatars/passwords/reset sessions, film requests/admin replies, bulletins/ads/SEO, guest free links/VIP/copy, branding/favicon and four themes on desktop/mobile.");
+  console.log("UI checks passed: hot carousel/push/rotation/pause, public theme toggle/persistence/admin isolation, stable menu emphasis, invitation policy toggle, automatic new-member VIP access, accounts/requests/bulletins/SEO, guest free links/VIP/copy and desktop/mobile layouts.");
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error("Browser errors:", errors);

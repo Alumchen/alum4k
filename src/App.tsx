@@ -15,11 +15,13 @@ import {
   ListVideo,
   LogOut,
   MonitorPlay,
+  Moon,
   Play,
   Search,
   Settings,
   Sparkles,
   Star,
+  Sun,
   Tv,
   UserRound,
   X
@@ -38,6 +40,7 @@ import type { DownloadResource, MediaItem, User, Announcement } from "./types";
 import { Link2, Share2 } from "lucide-react";
 import DownloadLink, { ResourceSummary } from "./ResourceDownloads";
 import SearchBox from "./SearchBox";
+import HotCarousel from "./HotCarousel";
 import usePageSeo from "./usePageSeo";
 import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
 
@@ -132,43 +135,6 @@ function FilterRow({
   );
 }
 
-function Spotlight({
-  item,
-  onSelect
-}: {
-  item: MediaItem | undefined;
-  onSelect: (item: MediaItem) => void;
-}) {
-  if (!item) return null;
-
-  const resourceCount = item.resources?.length ?? 0;
-
-  return (
-    <section className="spotlight">
-      {item.backdropPath ? <img src={item.backdropPath} alt="" /> : item.posterPath ? <img src={item.posterPath} alt="" /> : null}
-      <div className="spotlight-shade" />
-      <div className="spotlight-copy">
-        <span className="spotlight-kicker">
-          <Sparkles size={15} />
-          精选推荐
-        </span>
-        <h1>{item.title}</h1>
-        <p className="spotlight-meta">
-          {item.year ?? "未知年份"} · {item.region} · {item.category} · {item.rating ? `TMDB ${item.rating}` : item.status}
-        </p>
-        <p className="spotlight-overview">{shortText(item.overview || "暂无简介。", 116)}</p>
-        <div className="spotlight-actions">
-          <button type="button" onClick={() => onSelect(item)}>
-            <Play size={17} fill="currentColor" />
-            查看详情
-          </button>
-          <span>{resourceCount ? `${resourceCount} 个下载资源` : "待补资源"}</span>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function Sidebar({ active, onChange }: { active: string; onChange: (value: string) => void }) {
   const { settings } = useSite();
   return (
@@ -185,6 +151,7 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
               className={classNames("nav-item", active === item.label && "active")}
               key={item.label}
               onClick={() => onChange(item.label)}
+              aria-current={active === item.label ? "page" : undefined}
               type="button"
             >
               <Icon size={18} />
@@ -203,12 +170,13 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
   currentUser: User | null; onOpenAuth: () => void; onLogout: () => void; onNotice?: () => void;
   onProfile: () => void; onRequests: () => void; items: MediaItem[]; onSelect: (item: MediaItem) => void;
 }) {
-  const { settings } = useSite();
+  const { settings, theme, toggleTheme } = useSite();
   return <header className="topbar">
     <a className="mobile-brand" href="/"><BrandMark /><span>{settings.branding.name}</span></a>
     <SearchBox items={items} query={query} onQuery={onQuery} onSearch={onSearch} onSelect={onSelect} />
     <div className="top-actions">
       <button type="button" title="求片" aria-label="求片" onClick={onRequests}><Film size={18} /><span>求片</span></button>
+      <button type="button" className="theme-toggle" title={theme === "light" ? "切换深色背景" : "切换浅色背景"} aria-label={theme === "light" ? "切换深色背景" : "切换浅色背景"} onClick={toggleTheme}>{theme === "light" ? <Moon size={18} /> : <Sun size={18} />}</button>
       {onNotice ? <button type="button" title="站点公告" onClick={onNotice}><Bell size={18} /></button> : null}
       {currentUser ? <><button type="button" title="个人信息" aria-label="个人信息" onClick={onProfile}>{currentUser.avatar ? <img className="topbar-avatar" src={currentUser.avatar} alt="" /> : <UserRound size={18} />}<span>{currentUser.displayName || currentUser.username} · {vipLabel(currentUser)}</span></button><button type="button" title="退出登录" aria-label="退出登录" onClick={onLogout}><LogOut size={18} /></button></>
         : <button className="avatar" type="button" onClick={onOpenAuth} title="登录/注册" aria-label="登录/注册"><UserRound size={18} /></button>}
@@ -357,6 +325,7 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
 
 function LatestHome({ items, loading, onSelect, onCategory }: { items: MediaItem[]; loading: boolean; onSelect: (item: MediaItem) => void; onCategory: (category: string) => void }) {
   const container = useRef<HTMLDivElement>(null);
+  const promoted = useMemo(() => items.filter((item) => item.featured).sort((left, right) => (right.updatedAt || right.createdAt || "").localeCompare(left.updatedAt || left.createdAt || "")), [items]);
   const [columns, setColumns] = useState(2);
   useEffect(() => {
     const observer = new ResizeObserver(([entry]) => {
@@ -367,7 +336,7 @@ function LatestHome({ items, loading, onSelect, onCategory }: { items: MediaItem
     if (container.current) observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
-  return <div className="latest-home" ref={container}>{["电视剧", "电影", "综艺", "动漫"].map((category) => {
+  return <div className="latest-home" ref={container}><HotCarousel items={promoted} onSelect={onSelect} />{["电视剧", "电影", "综艺", "动漫"].map((category) => {
     const latest = latestCategoryItems(items, category, columns * 2);
     return <section className="latest-category" key={category} aria-label={`${category}最新更新`}>
       <header className="latest-category-head"><h2>{category}</h2><button type="button" onClick={() => onCategory(category)}>更多<ChevronDown size={16} /></button></header>
