@@ -39,6 +39,7 @@ try {
   assert.equal(await page.locator(".nav-item").filter({ hasText: "VIP会员" }).count(), 0);
   assert.equal(await page.getByRole("button", { name: "后台管理" }).count(), 0);
   assert.equal(await page.locator("video").count(), 0);
+  assert.equal(await page.locator(".site-footer").count(), 0, "empty disclaimer must not show an empty footer");
   await capture(page, "home-desktop.png");
   assert.equal(await page.locator(".latest-category").count(), 4);
   assert.equal(await page.locator(".filters, .spotlight, .notice-board").count(), 0);
@@ -202,6 +203,8 @@ try {
   assert.equal(await page.getByLabel("分类", { exact: true }).inputValue(), "动漫");
   await page.getByRole("button", { name: "站点设置", exact: true }).click();
   await page.getByLabel("注册提示文案", { exact: true }).fill("限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。");
+  const disclaimer = "自定义免责声明第一行。\n第二行说明：<script>不会执行</script>";
+  await page.getByLabel("免责声明正文", { exact: true }).fill(disclaimer);
   await page.getByLabel("启用首页弹窗", { exact: true }).check();
   await page.getByLabel("公告标题", { exact: true }).fill("欢迎来到 Alum4K");
   await page.getByLabel("公告正文", { exact: true }).fill("这里是公告正文。\n管理员可以随时更新。<script>不会执行</script>");
@@ -218,6 +221,27 @@ try {
   await page.reload();
   await page.locator(".media-card").first().waitFor();
   assert.equal(await page.getByRole("dialog").count(), 0);
+  async function checkFooter(target: Page, label: string) {
+    const footer = target.getByRole("region", { name: "免责声明", exact: true });
+    await footer.waitFor();
+    assert.equal(await footer.locator("p").textContent(), disclaimer);
+    assert.equal(await footer.locator("script").count(), 0);
+    const main = await target.locator(".public-main").boundingBox();
+    const rect = await footer.boundingBox();
+    const padding = await target.locator(".public-main").evaluate((element) => Number.parseFloat(getComputedStyle(element).paddingRight));
+    assert.ok(main && rect && Math.abs(rect.x + rect.width - (main.x + main.width - padding)) <= 2, `${label}: disclaimer must be right-aligned`);
+    assert.equal(await footer.evaluate((element) => getComputedStyle(element).textAlign), "right");
+    await target.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    const navigation = target.locator(".mobile-tabbar");
+    if (await navigation.isVisible()) {
+      const nav = await navigation.boundingBox(), end = await footer.boundingBox();
+      assert.ok(nav && end && end.y + end.height <= nav.y, `${label}: footer must not be hidden by mobile navigation`);
+    }
+    await target.screenshot({ path: path.join(output, `disclaimer-${label}.png`) });
+    await checkOverflow(target, label);
+  }
+  await checkFooter(page, "home-desktop");
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.locator(".hot-carousel").getByRole("heading", { name: "验证电影", exact: true }).waitFor();
   assert.equal(await page.locator(".hot-controls").count(), 0);
   await page.locator(".media-card").filter({ hasText: "验证电影" }).click();
@@ -243,8 +267,10 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await checkOverflow(page, "detail mobile");
   await capture(page, "detail-mobile.png");
+  await checkFooter(page, "detail-mobile");
   await page.goto(base + "/admin");
   await page.getByRole("heading", { name: "媒体库", exact: true }).waitFor();
+  assert.equal(await page.locator(".site-footer").count(), 0, "admin must not show the public footer");
   await page.getByRole("button", { name: "资源反馈", exact: true }).click();
   await page.getByText("请核验下载链接。", { exact: true }).waitFor();
   await checkOverflow(page, "resource reports mobile");
@@ -359,6 +385,8 @@ try {
   await user.waitForFunction(() => document.title === "Alum4K 高清资源");
   assert.equal(await user.locator('link[rel="icon"]').getAttribute("href"), logo);
   assert.equal(await user.getByRole("region", { name: "公告栏" }).count(), 0);
+  await checkFooter(user, "home-light-desktop");
+  await user.evaluate(() => window.scrollTo(0, 0));
   await user.getByRole("button", { name: "站点公告", exact: true }).click();
   await user.getByRole("dialog", { name: "公告栏", exact: true }).waitFor();
   assert.equal(await user.locator(".bulletin-list script").count(), 0);
@@ -371,8 +399,14 @@ try {
   async function centered() {
     const rect = await user.getByRole("dialog").boundingBox(); const viewport = user.viewportSize()!;
     assert.ok(rect && Math.abs(rect.x + rect.width / 2 - viewport.width / 2) <= 2 && Math.abs(rect.y + rect.height / 2 - viewport.height / 2) <= 2, "login/register modal must be centered");
+    assert.ok(rect.width < viewport.width && rect.height < viewport.height, "modal must fit the viewport");
   }
   await centered(); await capture(user, "login-desktop.png");
+  await user.setViewportSize({ width: 3338, height: 1815 }); await centered();
+  // Dialog positioning must not depend on the overlay's grid layout.
+  await user.locator(".auth-backdrop").evaluate((element) => { (element as HTMLElement).style.display = "block"; });
+  await centered(); await capture(user, "login-wide-desktop.png");
+  await user.locator(".auth-backdrop").evaluate((element) => { (element as HTMLElement).style.removeProperty("display"); });
   await user.setViewportSize({ width: 390, height: 400 }); await centered(); await checkOverflow(user, "short login viewport");
   await user.setViewportSize({ width: 390, height: 844 }); await centered();
   await capture(user, "login-mobile.png");
@@ -382,6 +416,9 @@ try {
   await user.getByLabel("密码", { exact: true }).fill("community-password");
   await user.getByLabel("邀请码", { exact: true }).fill(invitationCode);
   await centered(); await capture(user, "register-mobile.png");
+  await user.setViewportSize({ width: 1440, height: 1000 }); await centered(); await capture(user, "register-desktop.png");
+  await user.setViewportSize({ width: 320, height: 400 }); await centered(); await checkOverflow(user, "short registration viewport");
+  await user.setViewportSize({ width: 390, height: 844 });
   await user.getByRole("button", { name: "注册", exact: true }).click();
   await user.getByRole("button", { name: "个人信息", exact: true }).waitFor();
   await user.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
@@ -587,8 +624,17 @@ try {
   assert.equal(await seasonGuest.locator(".resource-plain-text").textContent(), "全季通用资源");
   await checkOverflow(seasonGuest, "season selector VIP mobile");
   await seasonGuestContext.close();
+  await page.goto(base + "/admin");
+  await page.getByRole("button", { name: "站点设置", exact: true }).click();
+  assert.equal(await page.getByLabel("免责声明正文", { exact: true }).inputValue(), disclaimer, "saved disclaimer must survive subsequent settings updates");
+  await page.getByLabel("免责声明正文", { exact: true }).fill("");
+  await page.getByRole("button", { name: "保存站点设置", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "站点设置已保存" }).waitFor();
+  await page.goto(base);
+  await page.locator(".media-card").first().waitFor();
+  assert.equal(await page.locator(".site-footer").count(), 0, "clearing the disclaimer must hide the footer");
   assert.deepEqual(errors, []);
-  console.log("UI checks passed: season selection/resources/counts/share/refresh/VIP, all-category episode status, hot carousel, themes, navigation, registration, accounts/requests/bulletins/SEO and desktop/mobile layouts.");
+  console.log("UI checks passed: centered login/registration, editable disclaimer/footer, season selection/resources/counts/share/refresh/VIP, all-category episode status, hot carousel, themes, navigation, accounts/requests/bulletins/SEO and desktop/mobile layouts.");
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error("Browser errors:", errors);

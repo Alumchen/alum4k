@@ -372,6 +372,8 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <label className="switch-field"><input type="checkbox" checked={settings.registration.requireInvitation !== false} onChange={(event) => setSettings({ ...settings, registration: { ...settings.registration, requireInvitation: event.target.checked } })} /><span>注册需要邀请码</span></label>
           <label className="admin-wide-field">注册提示文案<textarea aria-label="注册提示文案" rows={3} maxLength={500} value={settings.registration.hint} onChange={(event) => setSettings({ ...settings, registration: { ...settings.registration, hint: event.target.value } })} /></label>
           <BulletinEditor items={settings.bulletins} onChange={(bulletins) => setSettings((settings) => ({ ...settings, bulletins }))} />
+          <h2 className="settings-section-heading"><ShieldCheck size={18} />免责声明</h2>
+          <label className="admin-wide-field">免责声明正文<textarea aria-label="免责声明正文" rows={5} maxLength={3000} value={settings.disclaimer ?? ""} onChange={(event) => setSettings({ ...settings, disclaimer: event.target.value })} /><small className="muted">{settings.disclaimer?.length ?? 0} / 3000</small></label>
           <h2 className="settings-section-heading"><Bell size={18} />首页公告</h2>
           <label className="switch-field"><input type="checkbox" checked={settings.announcement.enabled} onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, enabled: event.target.checked } })} /><span>启用首页弹窗</span></label>
           <label className="admin-wide-field">公告标题<input maxLength={80} value={settings.announcement.title} required onChange={(event) => setSettings({ ...settings, announcement: { ...settings.announcement, title: event.target.value } })} /></label>

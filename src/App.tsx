@@ -217,6 +217,12 @@ function AuthModal({ onClose, onAuthed }: { onClose: () => void; onAuthed: (user
   </Dialog>;
 }
 
+function SiteFooter() {
+  const { settings } = useSite();
+  const content = settings.disclaimer ?? "";
+  return content.trim() ? <footer className="site-footer"><section className="site-disclaimer" aria-label="免责声明"><h2>免责声明</h2><p>{content}</p></section></footer> : null;
+}
+
 function EmptyState({ text }: { text: string }) {
   return (
     <div className="empty-state">
@@ -531,7 +537,7 @@ export default function App() {
 
   return <div className="app-shell">
     <Sidebar active={catalog.filters.category} onChange={handleNav} />
-    <main className="main-shell">
+    <main className="main-shell public-main">
       <Topbar query={query} onQuery={setQuery} onSearch={handleSearch} currentUser={currentUser} onOpenAuth={() => setAuthOpen(true)} items={items} onSelect={openFilm}
         onNotice={() => setBoardOpen(true)} onProfile={() => setProfileOpen(true)} onRequests={() => requestFilm()}
         onLogout={() => { setAuthToken(""); clearSession(); }} />
@@ -543,6 +549,7 @@ export default function App() {
         : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
             filters={catalog.filters} setFilters={setFilters} onSelect={openFilm} searchMode={Boolean(catalog.query)} searchTerm={catalog.query} years={years}
             onReset={() => setFilters({ ...defaultFilters, category: catalog.filters.category })} onRequest={() => requestFilm(catalog.query)} />}
+      <SiteFooter />
     </main>
     <div className="mobile-tabbar">{navItems.slice(0, 5).map((item) => { const Icon = item.icon; return <button className={classNames(catalog.filters.category === item.label && "active")} key={item.label} onClick={() => handleNav(item.label)} type="button"><Icon size={18} /><span>{item.label}</span></button>; })}</div>
     {authOpen ? <AuthModal onClose={() => { setAuthOpen(false); setRequestAfterLogin(false); }} onAuthed={(user) => { setCurrentUser(user); refreshLibrary(); if (requestAfterLogin) { setRequestsOpen(true); setRequestAfterLogin(false); } }} /> : null}

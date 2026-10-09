@@ -18,6 +18,7 @@ export interface SiteSettings {
   seo: { title: string; adminTitle: string; description: string; siteUrl?: string };
   bulletins: Bulletin[];
   registration: { hint: string; requireInvitation: boolean };
+  disclaimer: string;
 }
 export interface Bulletin {
   id: string;
@@ -33,5 +34,6 @@ export const defaultSettings: SiteSettings = {
   announcement: { enabled: false, title: "站点公告", content: "", frequency: "session", revision: "initial" },
   seo: { title: "", adminTitle: "", description: "影视资料、115 网盘与磁力下载资源。", siteUrl: "" },
   bulletins: [],
-  registration: { hint: "限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。", requireInvitation: true }
+  registration: { hint: "限时免费送7天体验会员，联系微信dkiss_zhou领取激活码。", requireInvitation: true },
+  disclaimer: ""
 };

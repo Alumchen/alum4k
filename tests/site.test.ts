@@ -48,6 +48,23 @@ test("registration hint defaults, persists, validates and requires administrator
   assert.equal((await request("/api/admin/settings", "PUT", { registration: { hint: "" } }, adminToken)).status, 200);
 });
 
+test("disclaimer settings default empty, preserve text and require administrator", async () => {
+  const before = (await request("/api/settings")).body;
+  assert.equal(before.disclaimer, "");
+  const disclaimer = "自定义说明。\n<script>仅作为文本</script>";
+  assert.equal((await request("/api/admin/settings", "PUT", { disclaimer }, userToken)).status, 403);
+  assert.equal((await request("/api/admin/settings", "PUT", { disclaimer }, adminToken)).status, 200);
+  assert.equal((await request("/api/settings")).body.disclaimer, disclaimer);
+  await request("/api/admin/settings", "PUT", { registration: { hint: before.registration.hint } }, adminToken);
+  assert.equal((await request("/api/settings")).body.disclaimer, disclaimer, "unrelated settings updates must retain disclaimer");
+  for (const value of [null, {}, "x".repeat(3001), "text\u0000"]) {
+    assert.equal((await request("/api/admin/settings", "PUT", { disclaimer: value }, adminToken)).status, 400);
+    assert.equal((await request("/api/settings")).body.disclaimer, disclaimer);
+  }
+  assert.equal((await request("/api/admin/settings", "PUT", { disclaimer: "" }, adminToken)).status, 200);
+  assert.equal((await request("/api/settings")).body.disclaimer, "");
+});
+
 test("registration invitation policy is server-owned and new members receive resource access", async () => {
   const before = (await request("/api/settings")).body.registration;
   assert.equal(before.requireInvitation, true);
