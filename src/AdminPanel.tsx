@@ -17,6 +17,7 @@ import { InvitationAdmin, RequestsAdmin } from "./CommunityAdmin";
 import ReportsAdmin from "./ReportsAdmin";
 import type { MediaItem, SiteSettings, User } from "./types";
 import { episodeStatus, getSeasons, mergeSeasons, seasonLabel, seasonStatus, selectedSeasonNumber, type MediaSeason } from "../shared/seasons";
+import { genreTaxonomy, matchesGenre, toggleGenreTag } from "../shared/genres";
 
 const blank: MediaItem = {
   id: "", mediaType: "movie", title: "", originalTitle: "", category: "电影", categoryMode: "auto",
@@ -121,6 +122,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
   const filteredUsers = users.filter((user) => user.username.includes(userQuery.trim().toLowerCase()) &&
     (userFilter === "全部" || (userFilter === "管理员" ? user.role === "admin" : userFilter === "VIP" ? user.role !== "admin" && user.vip : userFilter === "已到期" ? !user.vip && Boolean(user.vipUntil) : user.role !== "admin" && !user.vip)));
   const autoCategory = classifyMedia({ mediaType: draft.mediaType, genres: splitList(genres) });
+  const draftTaxonomy = genreTaxonomy(draft.categoryMode === "auto" ? autoCategory : draft.category);
   const draftSeasons = getSeasons(draft);
   const activeSeason = draftSeasons.find((season) => season.number === draft.selectedSeason);
   function chooseSeason(number: number) {
@@ -354,6 +356,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
             <label>海报地址<input value={draft.posterPath ?? ""} onChange={(event) => setDraft({ ...draft, posterPath: event.target.value })} /></label>
             <label>背景图地址<input value={draft.backdropPath ?? ""} onChange={(event) => setDraft({ ...draft, backdropPath: event.target.value })} /></label>
           </div>
+          <fieldset className="genre-tag-picker"><legend>{draftTaxonomy.label}分类</legend><div>{draftTaxonomy.values.map((value) => <label key={value}><input type="checkbox" checked={matchesGenre(splitList(genres), value)} onChange={(event) => setGenres(toggleGenreTag(splitList(genres), value, event.target.checked).join("，"))} />{value}</label>)}</div></fieldset>
           <label className="admin-wide-field">简介<textarea value={draft.overview} rows={5} onChange={(event) => setDraft({ ...draft, overview: event.target.value })} /></label>
           <h3 className="editor-resource-heading"><Download size={17} />下载资源{activeSeason ? <span className="editor-resource-season">{seasonLabel(activeSeason.number)}</span> : null}</h3>
           <ResourceEditor resources={draft.resources ?? []} seasons={draftSeasons} selectedSeason={draft.mediaType === "tv" ? draft.selectedSeason : undefined} defaultAccess={draft.access === "免费" ? "free" : "vip"} onChange={(resources) => setDraft({ ...draft, resources })} /></fieldset>

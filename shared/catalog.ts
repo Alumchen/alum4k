@@ -1,3 +1,5 @@
+import { matchesGenre } from "./genres";
+
 export interface CatalogItem {
   id: string; mediaType: "movie" | "tv"; title: string; originalTitle?: string; aliases?: string[]; tmdbId?: number;
   category: string; region: string; genres: string[]; year?: number; rating?: number; createdAt?: string; updatedAt?: string; featured?: boolean;
@@ -30,7 +32,7 @@ export function filterCatalog<T extends CatalogItem>(items: T[], filters: Catalo
   const next = items.filter((item) => {
     const usable = item.resources ?? [];
     return (!query || matchesExact(item, query)) && (filters.category === "首页" || item.category === filters.category) &&
-      (filters.genre === "全部" || item.genres.includes(filters.genre)) && (filters.region === "全部" || item.region === filters.region) &&
+      (filters.genre === "全部" || matchesGenre(item.genres, filters.genre)) && (filters.region === "全部" || item.region === filters.region) &&
       (filters.year === "全部" || String(item.year) === filters.year) && (filters.rating === "全部" || (item.rating ?? 0) >= Number(filters.rating)) &&
       (filters.resources === "全部" || (filters.resources === "有资源" ? usable.length > 0 : usable.length === 0)) &&
       (filters.access === "全部" || usable.some((resource) => filters.access === "免费" ? resource.access === "free" : resource.access !== "free"));

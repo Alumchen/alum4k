@@ -63,6 +63,50 @@ try {
     await capture(preview, `latest-home-${width}.png`);
   }
   await preview.close();
+  const taxonomyContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const taxonomy = await taxonomyContext.newPage();
+  taxonomy.on("pageerror", (error) => errors.push(error.message));
+  const taxonomyItems = [
+    { category: "电影", genres: ["Action"], title: "动作测试电影" },
+    { category: "电影", genres: ["Horror"], title: "恐怖测试电影" },
+    { category: "纪录片", genres: ["Documentary", "Wildlife"], title: "自然测试纪录片" },
+    { category: "纪录片", genres: ["纪录", "历史", "考古"], title: "历史测试纪录片" },
+    { category: "综艺", genres: ["Reality"], title: "真人秀测试" },
+    { category: "动漫", genres: ["Animation", "Comedy"], title: "搞笑动漫测试" },
+    { category: "少儿", genres: ["儿童", "科普"], title: "少儿科普测试" },
+    { category: "短剧", genres: ["逆袭"], title: "逆袭短剧测试" },
+    { category: "游戏", genres: ["实况"], title: "游戏实况测试" }
+  ].map((item, index) => ({ ...template, ...item, id: `taxonomy-${index}` }));
+  await taxonomy.route("**/api/media", (route) => route.fulfill({ json: { items: taxonomyItems } }));
+  await taxonomy.goto(base + "/?category=" + encodeURIComponent("电影"));
+  await taxonomy.locator(".media-card").first().waitFor();
+  const genreRow = taxonomy.locator(".filter-row").first();
+  assert.equal(await genreRow.getByRole("button", { name: "都市", exact: true }).count(), 0);
+  await genreRow.getByRole("button", { name: "动作", exact: true }).click();
+  assert.equal(await taxonomy.locator(".media-title").textContent(), "动作测试电影");
+  await taxonomy.locator(".sidebar").getByRole("button", { name: "纪录片", exact: true }).click();
+  assert.equal(new URL(taxonomy.url()).searchParams.get("genre"), null, "category changes must reset the prior genre");
+  assert.equal(await genreRow.locator(":scope > span").textContent(), "主题");
+  assert.equal(await genreRow.getByRole("button", { name: "爱情", exact: true }).count(), 0);
+  assert.equal(await genreRow.getByRole("button", { name: "考古", exact: true }).count(), 1);
+  await genreRow.getByRole("button", { name: "自然", exact: true }).click();
+  assert.equal(await taxonomy.locator(".media-title").textContent(), "自然测试纪录片");
+  await taxonomy.reload();
+  await taxonomy.locator(".media-card").first().waitFor();
+  assert.equal(await genreRow.getByRole("button", { name: "自然", exact: true }).getAttribute("class"), "filter-button active");
+  for (const width of [1440, 390, 320]) {
+    await taxonomy.setViewportSize({ width, height: 844 });
+    await checkOverflow(taxonomy, `documentary themes ${width}`);
+    assert.equal(await taxonomy.locator(".filters").evaluate((element) => element.scrollWidth > element.clientWidth + 1), false, "all category filter options must fit without hidden horizontal scrolling");
+    await capture(taxonomy, `documentary-themes-${width}.png`);
+  }
+  await taxonomy.setViewportSize({ width: 1440, height: 1000 });
+  for (const [category, genre, title] of [["综艺", "真人秀", "真人秀测试"], ["动漫", "搞笑", "搞笑动漫测试"], ["少儿", "科普", "少儿科普测试"], ["短剧", "逆袭", "逆袭短剧测试"], ["游戏", "实况", "游戏实况测试"]]) {
+    await taxonomy.locator(".sidebar").getByRole("button", { name: category, exact: true }).click();
+    await genreRow.getByRole("button", { name: genre, exact: true }).click();
+    assert.equal(await taxonomy.locator(".media-title").textContent(), title);
+  }
+  await taxonomyContext.close();
   const carouselContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const carousel = await carouselContext.newPage();
   carousel.on("pageerror", (error) => errors.push(error.message));
@@ -693,6 +737,21 @@ try {
   assert.equal(await page.getByLabel("状态", { exact: true }).inputValue(), "全8集");
   await page.unroute(detailRoute);
   await page.unroute("**/api/tmdb/search?**");
+  await page.goto(base + "/admin");
+  await page.getByRole("button", { name: "新增影视", exact: true }).click();
+  await page.getByLabel("影视标题", { exact: true }).fill("后台主题测试纪录片");
+  await page.getByLabel("类型标签", { exact: true }).fill("纪录，自定义标签");
+  const topicPicker = page.locator(".genre-tag-picker");
+  assert.equal(await topicPicker.locator("legend").textContent(), "主题分类");
+  await topicPicker.getByRole("checkbox", { name: "自然", exact: true }).check();
+  await topicPicker.getByRole("checkbox", { name: "科技", exact: true }).check();
+  assert.equal(await page.getByLabel("类型标签", { exact: true }).inputValue(), "纪录，自定义标签，自然，科技");
+  await page.getByRole("button", { name: "保存影视", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已保存" }).waitFor();
+  assert.equal(await page.getByLabel("分类", { exact: true }).inputValue(), "纪录片");
+  await page.goto(base + "/?category=" + encodeURIComponent("纪录片") + "&genre=" + encodeURIComponent("科技"));
+  await page.locator(".media-card").first().waitFor();
+  assert.equal(await page.locator(".media-title").textContent(), "后台主题测试纪录片");
   await page.goto(base + "/admin");
   await page.getByRole("button", { name: "站点设置", exact: true }).click();
   assert.equal(await page.getByLabel("免责声明正文", { exact: true }).inputValue(), disclaimer, "saved disclaimer must survive subsequent settings updates");

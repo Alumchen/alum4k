@@ -44,6 +44,7 @@ import HotCarousel from "./HotCarousel";
 import usePageSeo from "./usePageSeo";
 import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, type CatalogFilters } from "../shared/catalog";
 import { getSeasons, isSeasonNumber, resourcesForSeason, seasonLabel, seasonStatus, selectedSeasonNumber } from "../shared/seasons";
+import { genreOptions, genreTaxonomy } from "../shared/genres";
 
 const navItems = [
   { label: "首页", icon: Home },
@@ -58,7 +59,6 @@ const navItems = [
 ];
 
 const tabs = ["热门", "最新上架", "高分好评"];
-const genreFilters = ["全部", "爱情", "都市", "青春", "奇幻", "武侠", "古装", "科幻", "悬疑", "犯罪", "剧情", "冒险"];
 const accessFilters = ["全部", "免费", "VIP"];
 const regionFilters = ["全部", "内地", "中国香港", "中国台湾", "美国", "泰国", "英国", "韩国", "日本", "其他"];
 
@@ -375,7 +375,7 @@ function HomeView({
   filters,
   setFilters,
   onSelect,
-  searchMode, searchTerm, years, onRequest, onReset
+  searchMode, searchTerm, years, onRequest, onReset, genreValues
 }: {
   items: MediaItem[];
   loading: boolean;
@@ -386,6 +386,7 @@ function HomeView({
   setFilters: (value: CatalogFilters) => void;
   onSelect: (item: MediaItem) => void;
   searchMode: boolean; searchTerm: string; years: number[]; onRequest: () => void; onReset: () => void;
+  genreValues: string[];
 }) {
   const [filtersExpanded, setFiltersExpanded] = useState(true);
   const downloadTotal = items.filter((item) => downloadResourceCount(item) > 0).length;
@@ -413,7 +414,7 @@ function HomeView({
       </div>
 
       {filtersExpanded ? <div className="filters">
-        <FilterRow label="类型" values={genreFilters} active={filters.genre} onChange={(genre) => setFilters({ ...filters, genre })} />
+        <FilterRow label={genreTaxonomy(activeNav).label} values={genreValues} active={filters.genre} onChange={(genre) => setFilters({ ...filters, genre })} />
         <FilterRow label="资费" values={accessFilters} active={filters.access} onChange={(access) => setFilters({ ...filters, access })} />
         <FilterRow label="地区" values={regionFilters} active={filters.region} onChange={(region) => setFilters({ ...filters, region })} />
         <div className="catalog-extra-filters">
@@ -542,6 +543,7 @@ export default function App() {
         : loading && pathname !== "/" ? <div className="empty-state">正在读取影视详情…</div>
         : catalog.filters.category === "首页" && !catalog.query ? <LatestHome items={items} loading={loading} onSelect={openFilm} onCategory={handleNav} />
         : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
+            genreValues={genreOptions(catalog.filters.category, items, catalog.filters.genre)}
             filters={catalog.filters} setFilters={setFilters} onSelect={openFilm} searchMode={Boolean(catalog.query)} searchTerm={catalog.query} years={years}
             onReset={() => setFilters({ ...defaultFilters, category: catalog.filters.category })} onRequest={() => requestFilm(catalog.query)} />}
       <SiteFooter />

@@ -10,6 +10,7 @@ import { resourceDisplayMetadata } from "../shared/resources";
 import { getSeasons, resourcesForSeason, seasonStatus, mergeSeasons, selectedSeasonNumber } from "../shared/seasons";
 import { mapTmdbDetail } from "../server/tmdb";
 import { normalizeMediaItem } from "../server/library";
+import { genreTaxonomy, genreOptions, matchesGenre, toggleGenreTag } from "../shared/genres";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
@@ -108,6 +109,44 @@ test("catalog exact aliases, suggestions, compound filters and URL round trips",
   assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, "旧译名"), "https://example.com")), { filters, query: "旧译名" });
   assert.deepEqual(parseDetailPath(mediaPath(movie)), { id: movie.id, mediaType: "movie" });
   assert.equal(parseDetailPath("/movie/%ZZ"), null); assert.equal(parseDetailPath("/movie/a%2Fb"), null);
+});
+
+test("genre filters use category-specific taxonomies and retain custom library labels", () => {
+  assert.ok(genreTaxonomy("电影").values.includes("恐怖"));
+  assert.equal(genreTaxonomy("电影").values.includes("都市"), false);
+  assert.equal(genreTaxonomy("纪录片").label, "主题");
+  assert.ok(genreTaxonomy("纪录片").values.includes("自然"));
+  assert.equal(genreTaxonomy("纪录片").values.includes("爱情"), false);
+  for (const category of ["综艺", "动漫", "少儿", "短剧", "游戏"]) assert.ok(genreTaxonomy(category).values.length >= 6);
+  const items = [{ category: "纪录片", genres: ["纪录", "Wildlife", "天文", "天文"] }, { category: "电影", genres: ["Action", "特工"] }];
+  const doc = genreOptions("纪录片", items);
+  assert.ok(doc.includes("天文")); assert.equal(doc.includes("特工"), false);
+  assert.equal(doc.includes("Wildlife"), false); assert.equal(doc.includes("纪录"), false);
+  assert.equal(doc.filter((value) => value === "天文").length, 1);
+  assert.ok(genreOptions("纪录片", items, "旧自定义标签").includes("旧自定义标签"));
+});
+
+test("genre aliases match imported metadata without guessing from titles or synopses", () => {
+  const base = { mediaType: "movie" as const, region: "其他", id: "action", title: "自然风光与爱情", category: "电影", genres: ["Action", "Science Fiction"] };
+  const doc = { ...base, id: "doc", category: "纪录片", genres: ["Documentary", "Wildlife"] };
+  assert.equal(matchesGenre(["Action&Adventure"], "动作"), true);
+  assert.equal(matchesGenre(["SCI-FI & FANTASY"], "奇幻"), true);
+  assert.equal(matchesGenre([" Comedy "], "搞笑"), true);
+  assert.equal(matchesGenre(["纪录"], "自然"), false);
+  assert.equal(matchesGenre(["非自然主题"], "自然"), false);
+  assert.deepEqual(filterCatalog([base, doc], { ...defaultFilters, category: "电影", genre: "动作" }).map((item) => item.id), ["action"]);
+  assert.deepEqual(filterCatalog([base, doc], { ...defaultFilters, category: "纪录片", genre: "自然" }).map((item) => item.id), ["doc"]);
+  assert.equal(filterCatalog([base], { ...defaultFilters, genre: "爱情" }).length, 0);
+  const filters = { ...defaultFilters, category: "纪录片", genre: "自然" };
+  assert.deepEqual(readCatalogUrl(new URL(catalogPath(filters, ""), "https://example.com")).filters, filters);
+});
+
+test("admin genre choices preserve unrelated metadata and do not duplicate aliases", () => {
+  const genres = ["纪录", "Wildlife", "自定义"];
+  assert.deepEqual(toggleGenreTag(genres, "自然", true), genres);
+  assert.deepEqual(toggleGenreTag(genres, "科技", true), [...genres, "科技"]);
+  assert.deepEqual(toggleGenreTag(genres, "自然", false), ["纪录", "自定义"]);
+  assert.deepEqual(genres, ["纪录", "Wildlife", "自定义"]);
 });
 
 test("Nginx route upgrade is idempotent and preserves TLS, custom ports and redirects", () => {
