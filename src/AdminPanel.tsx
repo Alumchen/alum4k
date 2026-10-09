@@ -195,6 +195,17 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
       setNotice({ text: `已载入《${detail.title}》，分类：${detail.category}。`, error: false });
     });
   }
+  function loadSeasonInfo() {
+    if (draft.mediaType !== "tv" || !draft.tmdbId) return;
+    run(async () => {
+      const detail = await fetchTmdbDetail("tv", draft.tmdbId!);
+      const seasons = mergeSeasons(detail.seasons, draftSeasons);
+      const selectedSeason = selectedSeasonNumber({ ...draft, seasons });
+      const current = seasons.find((season) => season.number === selectedSeason);
+      setDraft({ ...draft, seasons, selectedSeason, episodeCount: detail.episodeCount ?? draft.episodeCount, status: seasonStatus(current, draft.status) });
+      setNotice({ text: seasons.length ? `已加载 ${seasons.length} 季，可选择采集季。尚未保存。` : "TMDB 暂无分季资料，可手动新增季。", error: false });
+    });
+  }
   function save(mode: "save" | "collect") {
     run(async () => {
       const payload = { ...draft, genres: splitList(genres), cast: splitList(cast), category: draft.categoryMode === "auto" ? autoCategory : draft.category,
@@ -318,18 +329,23 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
         </section>
         <form className="admin-edit-form" onSubmit={(event) => { event.preventDefault(); save("save"); }}>
           <div className="editor-heading"><h2>{draft.id ? "编辑影视" : "新增影视"}</h2><button type="button" disabled={busy} onClick={() => openDraft({ ...blank })}><Plus size={16} />新建</button></div>
-          <fieldset disabled={busy}><div className="admin-form-grid">
+          <fieldset disabled={busy}>
+            {draft.mediaType === "tv" ? <div className="collection-season-toolbar">
+              <div className="season-editor-controls"><label>采集 / 编辑季<select aria-label="后台选择季" value={draft.selectedSeason ?? ""} onChange={(event) => chooseSeason(Number(event.target.value))}>{!draftSeasons.length ? <option value="">未分季</option> : null}{draftSeasons.map((season) => <option key={season.number} value={season.number}>{seasonLabel(season.number)}{season.episodeCount ? ` · ${season.episodeCount}集` : ""}</option>)}</select></label><button type="button" title="新增季" aria-label="新增季" disabled={draftSeasons.length >= 200} onClick={addSeason}><Plus size={17} /></button></div>
+              <button className="load-season-button" type="button" disabled={!Number.isInteger(draft.tmdbId) || !draft.tmdbId || draft.tmdbId < 1} onClick={loadSeasonInfo}><RefreshCcw size={16} />加载季信息</button>
+              {activeSeason ? <span className="collection-season-status">{seasonStatus(activeSeason, draft.status)}</span> : null}
+            </div> : null}
+            <div className="admin-form-grid">
             <label>影视标题<input value={draft.title} required onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
             <label>原名<input value={draft.originalTitle ?? ""} onChange={(event) => setDraft({ ...draft, originalTitle: event.target.value })} /></label>
             <label>搜索别名<textarea aria-label="搜索别名" rows={3} maxLength={2000} value={(draft.aliases ?? []).join("\n")} onChange={(event) => setDraft({ ...draft, aliases: event.target.value.split(/\r?\n/) })} /></label>
-            <label>影视类型<select value={draft.mediaType} onChange={(event) => { const mediaType = event.target.value as MediaItem["mediaType"]; setDraft({ ...draft, mediaType, seasons: mediaType === "tv" ? draft.seasons : undefined, selectedSeason: mediaType === "tv" ? draft.selectedSeason : undefined, resources: draft.resources?.map((resource) => ({ ...resource, seasonNumber: mediaType === "tv" ? resource.seasonNumber : undefined })), status: draft.episodeCount ? `全${draft.episodeCount}集` : mediaType === "movie" ? "正片" : "待更新" }); }}><option value="movie">电影</option><option value="tv">剧集</option></select></label>
+            <label>影视类型<select aria-label="影视类型" value={draft.mediaType} onChange={(event) => { const mediaType = event.target.value as MediaItem["mediaType"]; setDraft({ ...draft, mediaType, seasons: mediaType === "tv" ? draft.seasons : undefined, selectedSeason: mediaType === "tv" ? draft.selectedSeason : undefined, resources: draft.resources?.map((resource) => ({ ...resource, seasonNumber: mediaType === "tv" ? resource.seasonNumber : undefined })), status: draft.episodeCount ? `全${draft.episodeCount}集` : mediaType === "movie" ? "正片" : "待更新" }); }}><option value="movie">电影</option><option value="tv">剧集</option></select></label>
             <label>TMDB ID<input type="number" min="1" value={draft.tmdbId ?? ""} onChange={(event) => setDraft({ ...draft, tmdbId: Number(event.target.value) || undefined })} /></label>
             <label>分类<select aria-label="分类" value={draft.categoryMode === "auto" ? autoCategory : draft.category} disabled={draft.categoryMode === "auto"} onChange={(event) => setDraft({ ...draft, category: event.target.value })}>{mediaCategories.map((category) => <option key={category}>{category}</option>)}</select></label>
             <div className="editor-toggles"><label><input type="checkbox" checked={draft.categoryMode === "auto"} onChange={(event) => setDraft({ ...draft, categoryMode: event.target.checked ? "auto" : "manual", category: autoCategory })} />自动分类</label><label><input type="checkbox" checked={Boolean(draft.featured)} onChange={(event) => setDraft({ ...draft, featured: event.target.checked })} />首页热播推送</label></div>
             <label>地区<input value={draft.region} onChange={(event) => setDraft({ ...draft, region: event.target.value })} /></label>
             <label>年份<input type="number" min="1880" max="2200" value={draft.year ?? ""} onChange={(event) => setDraft({ ...draft, year: Number(event.target.value) || undefined })} /></label>
             <label>评分<input type="number" min="0" max="10" step="0.1" value={draft.rating ?? ""} onChange={(event) => setDraft({ ...draft, rating: Number(event.target.value) || undefined })} /></label>
-            {draft.mediaType === "tv" ? <div className="season-editor-controls"><label>选择季<select aria-label="后台选择季" value={draft.selectedSeason ?? ""} onChange={(event) => chooseSeason(Number(event.target.value))}>{!draftSeasons.length ? <option value="">未分季</option> : null}{draftSeasons.map((season) => <option key={season.number} value={season.number}>{seasonLabel(season.number)}{season.episodeCount ? ` · ${season.episodeCount}集` : ""}</option>)}</select></label><button type="button" title="新增季" aria-label="新增季" disabled={draftSeasons.length >= 200} onClick={addSeason}><Plus size={17} /></button></div> : null}
             <label>{activeSeason ? "本季集数" : "总集数"}<input aria-label="影视集数" type="number" min="0" max="10000" value={activeSeason ? activeSeason.episodeCount ?? "" : draft.episodeCount ?? ""} onChange={(event) => updateEpisodeCount(event.target.value)} /></label>
             <label>状态<input value={draft.status} onChange={(event) => { if (activeSeason) updateSeason({ status: event.target.value }); else setDraft({ ...draft, status: event.target.value }); }} /></label>
             <label>默认链接权限<select value={draft.access === "免费" ? "免费" : "VIP"} onChange={(event) => setDraft({ ...draft, access: event.target.value as MediaItem["access"] })}><option value="VIP">VIP 查看</option><option value="免费">免费查看</option></select></label>
@@ -339,7 +355,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
             <label>背景图地址<input value={draft.backdropPath ?? ""} onChange={(event) => setDraft({ ...draft, backdropPath: event.target.value })} /></label>
           </div>
           <label className="admin-wide-field">简介<textarea value={draft.overview} rows={5} onChange={(event) => setDraft({ ...draft, overview: event.target.value })} /></label>
-          <h3 className="editor-resource-heading"><Download size={17} />下载资源</h3>
+          <h3 className="editor-resource-heading"><Download size={17} />下载资源{activeSeason ? <span className="editor-resource-season">{seasonLabel(activeSeason.number)}</span> : null}</h3>
           <ResourceEditor resources={draft.resources ?? []} seasons={draftSeasons} selectedSeason={draft.mediaType === "tv" ? draft.selectedSeason : undefined} defaultAccess={draft.access === "免费" ? "free" : "vip"} onChange={(resources) => setDraft({ ...draft, resources })} /></fieldset>
           <div className="editor-footer"><span>{dirty ? "有未保存的修改" : draft.id ? "已保存" : ""}</span><button className="primary-action" type="submit" disabled={busy}><Save size={16} />{busy ? "处理中…" : "保存影视"}</button><button type="button" disabled={busy || !draft.tmdbId} onClick={() => save("collect")}><RefreshCcw size={16} />更新 TMDB 并保存</button></div>
         </form>

@@ -518,28 +518,6 @@ button {
   filter: brightness(1.08);
 }
 
-.media-resource-pill {
-  position: absolute;
-  left: 8px;
-  bottom: 8px;
-  z-index: 4;
-  max-width: 48%;
-  border-radius: 999px;
-  padding: 5px 8px;
-  color: #dbe5e7;
-  background: rgba(0, 0, 0, 0.56);
-  font-size: 12px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.media-resource-pill.playable {
-  color: #08211f;
-  background: #13e5d3;
-}
-
 .media-hover-action {
   position: absolute;
   inset: auto 10px 42px;
@@ -2528,6 +2506,13 @@ html, body { background: var(--page); color: var(--text); }
 .season-editor-controls { display: flex; align-items: flex-end; gap: 8px; min-width: 0; }
 .season-editor-controls > label { flex: 1; min-width: 0; }
 .season-editor-controls > button { display: grid; place-items: center; width: 38px; height: 38px; flex-shrink: 0; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); color: var(--text); }
+.collection-season-toolbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; padding-bottom: 20px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
+.collection-season-toolbar .season-editor-controls { flex: 1 1 220px; max-width: 360px; }
+.collection-season-toolbar label { display: grid; gap: 8px; font-size: 13px; color: var(--muted); }
+.collection-season-toolbar select { width: 100%; min-width: 0; height: 38px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input); color: var(--text); font: inherit; }
+.load-season-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-raised); color: var(--text); font-size: 13px; }
+.collection-season-status { align-self: center; font-size: 13px; color: var(--muted); }
+.editor-resource-season { margin-left: auto; font-size: 13px; font-weight: 500; color: var(--accent); }
 .detail-season-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 8px 0 16px; color: var(--muted); font-size: 13px; }
 .detail-season-bar label { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .detail-season-bar select { min-width: 140px; max-width: 100%; min-height: 36px; border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; font: inherit; background: var(--input); color: var(--text); }

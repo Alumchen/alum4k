@@ -82,15 +82,10 @@ function PosterImage({ item }: { item: MediaItem }) {
 }
 
 function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: MediaItem) => void }) {
-  const resourceCount = item.resources?.length ?? 0;
-
   return (
     <a className="media-card" href={mediaPath(item)} onClick={(event) => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onSelect(item); }}>
       <div className="media-poster-wrap">
         <PosterImage item={item} />
-        <span className={"media-resource-pill"}>
-          {resourceCount > 0 ? `${resourceCount} 个资源` : "待补资源"}
-        </span>
         <span className="media-hover-action">
           <Play size={15} fill="currentColor" />
           查看详情
