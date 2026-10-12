@@ -91,17 +91,15 @@ else
   npm install
 fi
 
-if ! npm run build; then
-  if [[ -d "${BACKUP_DIR}/dist" ]]; then
-    mkdir -p dist
-    cp -a "${BACKUP_DIR}/dist/." dist/
-  fi
+BUILD_DIR="$(mktemp -d "${APP_DIR}/.alum4k-build.XXXXXX")"
+trap 'rm -rf -- "${BUILD_DIR}"' EXIT
+if ! npm run build -- --outDir "${BUILD_DIR}"; then
   echo "Build failed. Existing service and Nginx configuration were not changed."
   exit 1
 fi
 
 umask 022
-chmod -R a+rX dist
+chmod -R a+rX "${BUILD_DIR}"
 
 NPM_BIN="$(command -v npm)"
 
@@ -174,6 +172,8 @@ if ! ${SUDO} node scripts/public-pages.mjs "${NGINX_AVAILABLE}" "${API_PORT}" ||
   echo "Public-route configuration failed. Previous configuration and frontend restored; services were not restarted."
   exit 1
 fi
+node scripts/publish-build.mjs "${BUILD_DIR}" "${APP_DIR}/dist"
+chmod -R a+rX dist
 ${SUDO} systemctl restart "${APP_NAME}"
 ${SUDO} systemctl reload nginx
 

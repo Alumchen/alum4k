@@ -1,9 +1,12 @@
 import { after, before, test } from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { defaultFilters, filterCatalog, latestCategoryItems, mediaPath, matchesExact, parseDetailPath, readCatalogUrl, catalogPath, suggestMedia, paginateCatalog, catalogPageNumbers } from "../shared/catalog";
 import { addPublicPageLocations } from "../scripts/public-pages.mjs";
+import { publishBuild } from "../scripts/publish-build.mjs";
+import { tmdbImageFile, tmdbImageSource, validTmdbImage } from "../shared/tmdb-images";
+import { createTmdbImageCache, imageContentType } from "../server/tmdb-images";
 import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
 import { cleanResources } from "../src/ResourceEditor";
 import { resourceDisplayMetadata } from "../shared/resources";
@@ -37,6 +40,73 @@ test("latest homepage groups use category and update date, limited to two rows",
   const items = [{ ...base, id: "old", createdAt: "2026-01-01" }, { ...base, id: "recent", updatedAt: "2026-10-08" }, { ...base, id: "tv", category: "电视剧", updatedAt: "2026-10-09" }, { ...base, id: "new", createdAt: "2026-10-01" }];
   assert.deepEqual(latestCategoryItems(items, "电影", 2).map((item) => item.id), ["recent", "new"]);
   assert.equal(latestCategoryItems(items, "综艺", 4).length, 0);
+});
+
+const testImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+test("TMDB image URLs select smaller same-origin variants without proxying arbitrary hosts", () => {
+  const source = "https://image.tmdb.org/t/p/w500/test.jpg";
+  assert.equal(tmdbImageFile(source), "test.jpg");
+  assert.equal(tmdbImageSource(source, "w342"), "/api/images/tmdb/w342/test.jpg");
+  assert.equal(tmdbImageSource(source, "w185", true), "https://image.tmdb.org/t/p/w185/test.jpg");
+  for (const custom of ["https://other.invalid/cover.jpg", "https://image.tmdb.org.evil.invalid/t/p/w500/test.jpg", "https://image.tmdb.org@evil.invalid/t/p/w500/test.jpg", "/uploads/poster.jpg", "data:image/png;base64,a", "https://image.tmdb.org/t/p/w500/test.jpg?url=http://127.0.0.1"]) {
+    assert.equal(tmdbImageSource(custom, "w342"), custom); assert.equal(tmdbImageFile(custom), undefined);
+  }
+  for (const [size, file] of [["original", "test.jpg"], ["w9999", "test.jpg"], ["w342", "../test.jpg"], ["w342", "test.svg"], ["w342", "a%2fb.jpg"], ["w342", "http://localhost/test.jpg"]]) assert.equal(validTmdbImage(size, file), false);
+  assert.equal(imageContentType(testImage), "image/png");
+  assert.throws(() => imageContentType(Buffer.from("<html>upstream error</html>")));
+});
+
+test("TMDB disk cache coalesces downloads, limits concurrency, survives restart and bounds storage", async () => {
+  const directory = path.join(api.directory, "cache-test");
+  let downloads = 0; let active = 0; let peak = 0;
+  const fetchImage = async () => { downloads++; active++; peak = Math.max(peak, active); await new Promise((resolve) => setTimeout(resolve, 15)); active--; return testImage; };
+  const cache = createTmdbImageCache({ directory, maximumBytes: testImage.length * 3, fetchImage, concurrency: 2 });
+  const same = await Promise.all(Array.from({ length: 10 }, () => cache.get("w342", "same.jpg")));
+  assert.equal(downloads, 1); assert.ok(same.every((bytes) => bytes.equals(testImage)));
+  await cache.get("w342", "same.jpg"); assert.equal(downloads, 1);
+  const restarted = createTmdbImageCache({ directory, maximumBytes: testImage.length * 3, fetchImage });
+  await restarted.get("w342", "same.jpg"); assert.equal(downloads, 1);
+  await Promise.all(Array.from({ length: 6 }, (_, index) => cache.get("w185", `other${index}.png`)));
+  assert.ok(peak <= 2);
+  const files = await readdir(directory);
+  const bytes = (await Promise.all(files.map(async (file) => (await stat(path.join(directory, file))).size))).reduce((sum, count) => sum + count, 0);
+  assert.ok(bytes <= testImage.length * 3); assert.ok(files.every((file) => !file.endsWith(".tmp")));
+  await assert.rejects(cache.get("original", "test.jpg"));
+  let failures = 0;
+  const broken = createTmdbImageCache({ directory: path.join(api.directory, "broken-cache"), maximumBytes: 1000, fetchImage: async () => { failures++; throw new Error("upstream down"); } });
+  await assert.rejects(broken.get("w342", "broken.jpg")); await assert.rejects(broken.get("w342", "broken.jpg")); assert.equal(failures, 1);
+  const corrupt = createTmdbImageCache({ directory: path.join(api.directory, "corrupt-cache"), maximumBytes: 1000, fetchImage: async () => Buffer.from("not an image") });
+  await assert.rejects(corrupt.get("w342", "corrupt.jpg"));
+  assert.equal((await readdir(path.join(api.directory, "corrupt-cache"))).length, 0);
+});
+
+test("same-origin images send cache headers and never accept arbitrary upstreams", async () => {
+  const directory = path.join(api.directory, "data/cache/tmdb-images");
+  await mkdir(directory, { recursive: true }); await writeFile(path.join(directory, "w342-cache-fixture.png"), testImage);
+  const response = await fetch(api.base + "/api/images/tmdb/w342/cache-fixture.png");
+  assert.equal(response.status, 200); assert.equal(response.headers.get("content-type"), "image/png");
+  assert.match(response.headers.get("cache-control") || "", /max-age=604800/); assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  assert.ok(Buffer.from(await response.arrayBuffer()).equals(testImage));
+  assert.equal((await fetch(api.base + "/api/images/tmdb/w342/cache-fixture.png", { headers: { "If-None-Match": response.headers.get("etag")! } })).status, 304);
+  for (const endpoint of ["/api/images/tmdb/original/test.jpg", "/api/images/tmdb/w342/test.svg", "/api/images/tmdb/w342/test.jpg?url=http://localhost", "/api/images/tmdb/w9999/test.jpg"]) assert.equal((await fetch(api.base + endpoint)).status, 400);
+});
+
+test("frontend publication validates assets, keeps old chunks and publishes entry last", async () => {
+  const directory = path.join(api.directory, "publish-test"); const source = path.join(directory, "staging"); const destination = path.join(directory, "live");
+  await mkdir(path.join(source, "assets"), { recursive: true }); await mkdir(path.join(destination, "assets"), { recursive: true });
+  await writeFile(path.join(destination, "index.html"), "old entry"); await writeFile(path.join(destination, "assets/old.js"), "old chunk");
+  const html = '<html><script type="module" src="/assets/new.js"></script><link href="/assets/new.css" rel="stylesheet"></html>';
+  await writeFile(path.join(source, "index.html"), html);
+  await assert.rejects(publishBuild(source, destination)); assert.equal(await readFile(path.join(destination, "index.html"), "utf8"), "old entry");
+  await writeFile(path.join(source, "assets/new.js"), "new chunk"); await writeFile(path.join(source, "assets/new.css"), "new style");
+  await publishBuild(source, destination);
+  assert.equal(await readFile(path.join(destination, "index.html"), "utf8"), html);
+  assert.equal(await readFile(path.join(destination, "assets/old.js"), "utf8"), "old chunk");
+  assert.equal(await readFile(path.join(destination, "assets/new.js"), "utf8"), "new chunk");
+  await assert.rejects(publishBuild(source, source));
+  const entry = await readFile(path.resolve("index.html"), "utf8");
+  assert.equal(entry.includes("需要通过开发服务器打开"), false); assert.equal(entry.includes("npm run dev"), false);
+  assert.ok(entry.includes('id="boot-screen"')); assert.ok(entry.includes("vite:preloadError")); assert.ok(entry.includes("60000"));
 });
 
 test("site login gate defaults off, persists, protects content and does not block accounts or admin", async () => {
@@ -221,6 +291,12 @@ test("Nginx route upgrade is idempotent and preserves TLS, custom ports and redi
   assert.equal((upgraded.match(/# alum4k-public-pages:start/g) ?? []).length, 3);
   assert.ok(upgraded.includes("listen 1023;")); assert.ok(upgraded.includes("listen 443 ssl;")); assert.ok(upgraded.includes("ssl_certificate /etc/letsencrypt/live/alum4k/fullchain.pem;")); assert.ok(upgraded.includes("return 301 https://$host$request_uri;"));
   assert.ok(upgraded.includes("proxy_pass http://127.0.0.1:5188;")); assert.equal(addPublicPageLocations(upgraded, 5174), upgraded);
+  assert.ok(upgraded.includes("no-cache, must-revalidate")); assert.ok(upgraded.includes("try_files $uri =404;")); assert.ok(upgraded.includes("gzip_types text/css application/javascript"));
+  const custom = 'server { location ^~ "/assets/" { expires 7d; } location = /index.html { expires -1; } gzip off; }';
+  const kept = addPublicPageLocations(custom);
+  assert.equal((kept.match(/\/assets\//g) || []).length, 1); assert.equal((kept.match(/\/index\.html/g) || []).length, 1); assert.ok(kept.includes("gzip off;")); assert.equal(kept.includes("gzip on;"), false);
+  const inherited = addPublicPageLocations("server { gzip_types text/plain; gzip_vary off; }");
+  assert.equal((inherited.match(/gzip_types/g) || []).length, 1); assert.equal((inherited.match(/gzip_vary/g) || []).length, 1);
   assert.throws(() => addPublicPageLocations("server { location /movie/ { return 200; } }"));
   assert.throws(() => addPublicPageLocations('server { set $bad "unterminated; }'));
   assert.throws(() => addPublicPageLocations("server {", 5174)); assert.throws(() => addPublicPageLocations("server {}", 0));

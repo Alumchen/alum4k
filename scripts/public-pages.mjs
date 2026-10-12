@@ -49,9 +49,17 @@ export function addPublicPageLocations(source, defaultPort = 5174) {
   let next = source;
   for (const server of servers.sort((a, b) => b.open - a.open)) {
     const body = source.slice(server.open, server.close); const existing = body.indexOf(marker);
-    const region = `\n    ${marker}\n${locations}\n    ${endMarker}\n`;
+    const end = existing >= 0 ? body.indexOf(endMarker, existing) : -1;
+    if (existing >= 0 && end < 0) throw new Error("Incomplete public-pages marker; configuration was not changed.");
+    const custom = existing >= 0 ? body.slice(0, existing) + body.slice(end + endMarker.length) : body;
+    const customTokens = tokens(custom);
+    const hasLocation = (value) => customTokens.some((token, index) => token.value === "location" && (customTokens[index + 1]?.value === value || customTokens[index + 2]?.value === value));
+    const assets = hasLocation("/assets/") ? "" : `\n    location ^~ /assets/ {\n        try_files $uri =404;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        add_header X-Content-Type-Options nosniff always;\n    }`;
+    const entry = hasLocation("/index.html") ? "" : `\n    location = /index.html {\n        add_header Cache-Control "no-cache, must-revalidate" always;\n    }`;
+    const hasDirective = (name) => customTokens.some((token) => token.value === name);
+    const compression = hasDirective("gzip") ? "" : `\n    gzip on;${hasDirective("gzip_vary") ? "" : "\n    gzip_vary on;"}${hasDirective("gzip_types") ? "" : "\n    gzip_types text/css application/javascript text/javascript application/json image/svg+xml;"}`;
+    const region = `\n    ${marker}\n${locations}${assets}${entry}${compression}\n    ${endMarker}\n`;
     if (existing >= 0) {
-      const end = body.indexOf(endMarker, existing); if (end < 0) throw new Error("Incomplete public-pages marker; configuration was not changed.");
       const startAt = server.open + existing; const endAt = server.open + end + endMarker.length;
       next = next.slice(0, startAt) + region.trim() + next.slice(endAt);
     } else {
@@ -65,5 +73,5 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const file = process.argv[2]; if (!file) throw new Error("Nginx config path is required.");
   const before = await readFile(file, "utf8"); const after = addPublicPageLocations(before, Number(process.argv[3] || 5174));
   if (before !== after) { const temporary = `${file}.alum4k.tmp`; await writeFile(temporary, after, { mode: 0o644 }); await rename(temporary, file); }
-  console.log("Public detail, sitemap and robots routes configured; existing ports and TLS preserved.");
+  console.log("Public routes, HTML/asset caching and compression configured; existing ports and TLS preserved.");
 }

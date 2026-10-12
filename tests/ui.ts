@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { chromium, type Page } from "playwright";
 import { adminPassword, freePort, magnetUrl, panUrl, projectRoot, startTestApi } from "./fixtures";
@@ -29,6 +29,55 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
   browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) });
+  const seoContext = await browser.newContext();
+  const seoBoot = await seoContext.newPage();
+  seoBoot.on("pageerror", (error) => errors.push(error.message));
+  const sourceHtml = await readFile(path.join(projectRoot, "index.html"), "utf8");
+  const bootScript = /<script>([\s\S]*?)<\/script>/.exec(sourceHtml)![1];
+  await seoBoot.setContent(`<div id="root"><article><h1>影视详情</h1></article></div><script>${bootScript}</script>`);
+  assert.equal(await seoBoot.getByRole("heading", { name: "影视详情", exact: true }).count(), 1);
+  await seoContext.close();
+  const slowContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const slow = await slowContext.newPage();
+  let releaseEntry!: () => void;
+  const heldEntry = new Promise<void>((resolve) => { releaseEntry = resolve; });
+  await slow.route("**/src/main.tsx*", async (route) => { await heldEntry; await route.continue(); });
+  await slow.clock.install();
+  await slow.goto(base, { waitUntil: "commit" });
+  await slow.locator("#boot-screen").waitFor();
+  assert.equal(await slow.locator("body").innerText().then((text) => text.includes("需要通过开发服务器打开")), false);
+  await slow.clock.fastForward(21000);
+  await slow.getByRole("alert").filter({ hasText: "网络较慢" }).waitFor();
+  await slow.getByRole("button", { name: "重新加载", exact: true }).waitFor();
+  await capture(slow, "boot-slow-mobile.png");
+  releaseEntry();
+  await slow.locator(".media-card").first().waitFor();
+  await slowContext.close();
+  const failedContext = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const failed = await failedContext.newPage();
+  let entryFailures = 0;
+  await failed.route("**/src/main.tsx*", (route) => { entryFailures++; return route.abort(); });
+  await failed.goto(base, { waitUntil: "commit" });
+  await failed.getByRole("alert").filter({ hasText: "页面加载失败" }).waitFor();
+  assert.equal(entryFailures, 2, "asset failure must retry automatically only once");
+  assert.equal(await failed.locator("body").innerText().then((text) => text.includes("npm run dev")), false);
+  await failed.getByRole("button", { name: "重新加载", exact: true }).click();
+  await failed.getByRole("alert").filter({ hasText: "页面加载失败" }).waitFor();
+  assert.equal(entryFailures, 3, "manual retry must not start an automatic reload loop");
+  await failed.unroute("**/src/main.tsx*");
+  await failed.getByRole("button", { name: "重新加载", exact: true }).click();
+  await failed.locator(".media-card").first().waitFor();
+  await failedContext.close();
+  const chunkContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const chunk = await chunkContext.newPage();
+  await chunk.route("**/src/App.tsx*", (route) => route.abort());
+  await chunk.goto(base);
+  await chunk.getByRole("alert").filter({ hasText: "页面加载失败" }).waitFor();
+  await checkOverflow(chunk, "failed lazy chunk recovery");
+  await chunk.unroute("**/src/App.tsx*");
+  await chunk.getByRole("button", { name: "重新加载", exact: true }).click();
+  await chunk.locator(".media-card").first().waitFor();
+  await chunkContext.close();
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, permissions: ["clipboard-read", "clipboard-write"] });
   const page = await context.newPage();
   page.on("pageerror", (error) => errors.push(error.message));
@@ -60,11 +109,41 @@ try {
     }) && document.querySelectorAll(".latest-media-grid").length === 3);
     assert.deepEqual(await preview.locator(".latest-category h2").allTextContents(), ["热播剧集", "热门电影", "热门动漫"]);
     assert.equal(await preview.locator(".latest-category .media-card").filter({ hasText: "综艺测试" }).count(), 0);
+    const firstImage = preview.locator(".latest-media-grid").first().locator("img").first();
+    assert.equal(await firstImage.getAttribute("loading"), "eager");
+    assert.equal(await firstImage.getAttribute("decoding"), "async");
+    assert.ok((await firstImage.getAttribute("src"))?.startsWith("/api/images/tmdb/"));
+    assert.ok((await firstImage.getAttribute("srcset"))?.includes("/w185/"));
+    assert.ok((await firstImage.getAttribute("srcset"))?.includes("/w500/"));
+    assert.equal(await preview.locator(".latest-media-grid").nth(1).locator("img").first().getAttribute("loading"), "lazy");
+    await preview.waitForFunction(async () => {
+      const image = document.querySelector<HTMLImageElement>(".latest-media-grid img");
+      if (!image?.complete || !image.currentSrc) return false;
+      try { await image.decode(); return new URL(image.currentSrc).origin === location.origin; } catch { return false; }
+    });
     const positions = await preview.locator(".latest-media-grid").first().locator(".media-card").evaluateAll((cards) => cards.map((card) => Math.round(card.getBoundingClientRect().top)));
     assert.equal(new Set(positions).size, 2);
     await checkOverflow(preview, `latest homepage ${width}`);
     await capture(preview, `latest-home-${width}.png`);
   }
+  const imageFallback = await context.newPage();
+  imageFallback.on("pageerror", (error) => errors.push(error.message));
+  await imageFallback.route("**/api/media", (route) => route.fulfill({ json: { items: [{ ...template, id: "image-fallback", title: "图片回退测试", category: "电影", posterPath: "https://image.tmdb.org/t/p/w500/fallback-test.jpg" }] } }));
+  await imageFallback.route("**/api/images/tmdb/**", (route) => route.fulfill({ status: 502, headers: { "Cache-Control": "no-store" } }));
+  await imageFallback.route("https://image.tmdb.org/**", (route) => route.fulfill({ contentType: "image/png", headers: { "Cache-Control": "no-store" }, body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64") }));
+  await imageFallback.goto(base + "/?category=" + encodeURIComponent("电影"));
+  await imageFallback.waitForFunction(async () => {
+    const image = document.querySelector<HTMLImageElement>(".poster-frame img");
+    if (!image?.currentSrc.startsWith("https://image.tmdb.org/")) return false;
+    try { await image.decode(); return true; } catch { return false; }
+  });
+  await imageFallback.unroute("https://image.tmdb.org/**");
+  await imageFallback.route("https://image.tmdb.org/**", (route) => route.abort());
+  await imageFallback.reload();
+  await imageFallback.locator(".media-title").waitFor();
+  await imageFallback.waitForFunction(() => Boolean(document.querySelector(".poster-frame .poster-fallback")) && document.querySelectorAll(".poster-frame img").length === 0);
+  assert.equal(await imageFallback.locator(".poster-fallback span").textContent(), "图片回退测试");
+  await imageFallback.close();
   for (const [title, category] of [["热播剧集", "电视剧"], ["热门电影", "电影"], ["热门动漫", "动漫"]]) {
     await preview.getByRole("region", { name: title, exact: true }).getByRole("button", { name: "更多", exact: true }).click();
     await preview.waitForURL((url) => url.searchParams.get("category") === category);
@@ -966,7 +1045,7 @@ try {
   assert.equal(await locked.locator(".public-login-page").count(), 0);
   await privateContext.close();
   assert.deepEqual(errors, []);
-  console.log("UI checks passed: private site access/login/registration/logout/expiry/admin/recovery, TMDB seasons, centered login/registration, disclaimer, VIP, two-row catalog pagination, homepage sections, carousel, themes, navigation, accounts/requests/bulletins/SEO and desktop/mobile layouts.");
+  console.log("UI checks passed: weak-network boot, asset/lazy-chunk failure recovery, responsive cached images, private site access, TMDB seasons, login/registration, disclaimer, VIP, pagination, homepage sections, carousel, themes, accounts/requests/bulletins/SEO and desktop/mobile layouts.");
   console.log(`Screenshots: ${output}`);
 } catch (error) {
   console.error("Browser errors:", errors);

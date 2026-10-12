@@ -36,6 +36,12 @@ export async function startTestApi() {
     ]
   };
   await writeFile(path.join(directory, "data", "library.json"), JSON.stringify([movie, { ...movie, id: "empty", title: "暂无资源", tmdbId: 789012, source: undefined, resources: [], episodes: [] }]));
+  const imageDirectory = path.join(directory, "data/cache/tmdb-images");
+  await mkdir(imageDirectory, { recursive: true });
+  const pixel = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+  for (const size of ["w92", "w185", "w300", "w342", "w500", "w780", "w1280"]) {
+    for (const file of ["8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg", "fm6KqXpk3M2HVveHwCrBSSBaO0V.jpg"]) await writeFile(path.join(imageDirectory, `${size}-${file}`), pixel);
+  }
   const port = await freePort();
   const child = spawn(process.execPath, ["--import", pathToFileURL(path.join(projectRoot, "node_modules/tsx/dist/loader.mjs")).href, path.join(projectRoot, "server/index.ts")], {
     cwd: directory,

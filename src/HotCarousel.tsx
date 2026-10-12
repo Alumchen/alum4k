@@ -2,11 +2,12 @@ import { ChevronLeft, ChevronRight, Flame, Pause, Play } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { mediaPath } from "../shared/catalog";
 import type { MediaItem } from "./types";
+import MediaImage from "./MediaImage";
 
 function HotImage({ item }: { item: MediaItem }) {
-  const [source, setSource] = useState(item.backdropPath || item.posterPath);
+  const source = item.backdropPath || item.posterPath;
   if (!source) return null;
-  return <img className="hot-backdrop" src={source} alt="" fetchPriority="high" onError={() => setSource(source === item.backdropPath && item.posterPath !== source ? item.posterPath : "")} />;
+  return <MediaImage className="hot-backdrop" src={source} fallbackSrc={item.posterPath} kind="backdrop" alt="" eager fetchPriority="high" />;
 }
 
 export default function HotCarousel({ items, onSelect }: { items: MediaItem[]; onSelect: (item: MediaItem) => void }) {

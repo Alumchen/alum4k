@@ -12,3 +12,5 @@ backups/
 data/site-settings.json
 data/*.tmp
 artifacts/
+data/cache/
+.alum4k-build.*/

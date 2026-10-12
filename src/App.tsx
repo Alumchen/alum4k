@@ -44,6 +44,7 @@ import DownloadLink, { ResourceSummary } from "./ResourceDownloads";
 import SearchBox from "./SearchBox";
 import HotCarousel from "./HotCarousel";
 import usePageSeo from "./usePageSeo";
+import MediaImage from "./MediaImage";
 import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, paginateCatalog, catalogPageNumbers, type CatalogFilters } from "../shared/catalog";
 import { getSeasons, isSeasonNumber, resourcesForSeason, seasonLabel, seasonStatus, selectedSeasonNumber } from "../shared/seasons";
 import { genreOptions, genreTaxonomy } from "../shared/genres";
@@ -68,10 +69,10 @@ function classNames(...values: Array<string | false | undefined>) {
   return values.filter(Boolean).join(" ");
 }
 
-function PosterImage({ item }: { item: MediaItem }) {
+function PosterImage({ item, eager = false }: { item: MediaItem; eager?: boolean }) {
   return (
     <div className="poster-frame">
-      {item.posterPath ? <img src={item.posterPath} alt={item.title} loading="lazy" /> : null}
+      {item.posterPath ? <MediaImage src={item.posterPath} alt={item.title} eager={eager} /> : null}
       <div className="poster-fallback">
         <Film size={28} />
         <span>{item.title}</span>
@@ -83,11 +84,11 @@ function PosterImage({ item }: { item: MediaItem }) {
   );
 }
 
-function MediaCard({ item, onSelect }: { item: MediaItem; onSelect: (item: MediaItem) => void }) {
+function MediaCard({ item, onSelect, eager = false }: { item: MediaItem; onSelect: (item: MediaItem) => void; eager?: boolean }) {
   return (
     <a className="media-card" href={mediaPath(item)} onClick={(event) => { if (event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onSelect(item); }}>
       <div className="media-poster-wrap">
-        <PosterImage item={item} />
+        <PosterImage item={item} eager={eager} />
         <span className="media-hover-action">
           <Play size={15} fill="currentColor" />
           查看详情
@@ -308,9 +309,9 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
   return <section className="detail-view">
     <div className="detail-toolbar"><button className="back-button" onClick={onBack} type="button"><ArrowLeft size={18} />返回</button><button type="button" className="share-film" title="复制影视网址" onClick={async () => { try { const url = new URL(mediaPath(item), location.origin); if (seasonNumber !== undefined) url.searchParams.set("season", String(seasonNumber)); await copyText(url.href); setShareMessage("影视网址已复制"); } catch (error) { setShareMessage(error instanceof Error ? error.message : "复制失败。"); } }}><Share2 size={16} />分享</button>{shareMessage ? <span role="status">{shareMessage}</span> : null}</div>
     <div className="detail-hero">
-      {item.backdropPath ? <img src={item.backdropPath} alt="" /> : null}<div className="detail-shade" />
+      {item.backdropPath ? <MediaImage src={item.backdropPath} kind="backdrop" alt="" eager fetchPriority="high" /> : null}<div className="detail-shade" />
       <div className="detail-info">
-        <div className="detail-poster"><PosterImage item={{ ...item, status, posterPath: season?.posterPath || item.posterPath }} /></div>
+        <div className="detail-poster"><PosterImage item={{ ...item, status, posterPath: season?.posterPath || item.posterPath }} eager /></div>
         <div className="detail-copy">
           <span className="detail-label">{item.category}</span><h1>{item.title}</h1>
           <p className="detail-subtitle">{item.originalTitle ? item.originalTitle + " · " : ""}{item.year ?? "未知年份"} · {item.region} · {seasonNumber !== undefined ? seasonLabel(seasonNumber) + " · " : ""}{status}</p>
@@ -337,7 +338,7 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
       <aside className="episode-panel">
         <div className="panel-title"><span>同类推荐</span><small>{relatedItems.length} 部</small></div>
         <div className="related-list">{relatedItems.map((related) => <a key={related.id} href={mediaPath(related)} onClick={(event) => { if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return; event.preventDefault(); onSelectRelated(related); }}>
-          {related.posterPath ? <img src={related.posterPath} alt="" loading="lazy" /> : <span className="related-poster-fallback"><Film size={18} /></span>}
+          {related.posterPath ? <MediaImage src={related.posterPath} alt="" kind="thumbnail" /> : <span className="related-poster-fallback"><Film size={18} /></span>}
           <span><strong>{related.title}</strong><small>{related.year ?? "未知年份"} · {related.category}</small></span>
         </a>)}</div>
       </aside>
@@ -358,12 +359,12 @@ function LatestHome({ items, loading, onSelect, onCategory }: { items: MediaItem
     if (container.current) observer.observe(container.current);
     return () => observer.disconnect();
   }, []);
-  return <div className="latest-home" ref={container}><HotCarousel items={promoted} onSelect={onSelect} />{[{ category: "电视剧", title: "热播剧集" }, { category: "电影", title: "热门电影" }, { category: "动漫", title: "热门动漫" }].map(({ category, title }) => {
+  return <div className="latest-home" ref={container}><HotCarousel items={promoted} onSelect={onSelect} />{[{ category: "电视剧", title: "热播剧集" }, { category: "电影", title: "热门电影" }, { category: "动漫", title: "热门动漫" }].map(({ category, title }, sectionIndex) => {
     const latest = latestCategoryItems(items, category, columns * 2);
     return <section className="latest-category" key={category} aria-label={title}>
       <header className="latest-category-head"><h2>{title}</h2><button type="button" onClick={() => onCategory(category)}>更多<ChevronDown size={16} /></button></header>
       {loading ? <div className="loading-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{Array.from({ length: columns * 2 }).map((_, index) => <div className="skeleton-card" key={index} />)}</div>
-        : latest.length ? <div className="media-grid latest-media-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{latest.map((item) => <MediaCard item={item} key={item.id} onSelect={onSelect} />)}</div>
+        : latest.length ? <div className="media-grid latest-media-grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>{latest.map((item, index) => <MediaCard item={item} key={item.id} onSelect={onSelect} eager={sectionIndex === 0 && index < columns} />)}</div>
           : <p className="latest-empty">暂无{category}</p>}
     </section>;
   })}</div>;
@@ -471,8 +472,8 @@ function HomeView({
             <div className="skeleton-card" key={index} />
           ))
       ) : items.length ? (
-          pagination.items.map((item) => (
-            <MediaCard item={item} key={item.id} onSelect={onSelect} />
+          pagination.items.map((item, index) => (
+            <MediaCard item={item} key={item.id} onSelect={onSelect} eager={index < columns} />
           ))
       ) : (
         <div className="catalog-empty"><EmptyState text="没有找到匹配的视频" />{searchMode ? <button type="button" className="primary-action" onClick={onRequest}><Film size={16} />求片：{searchTerm}</button> : <button type="button" onClick={onReset}>重置筛选</button>}</div>

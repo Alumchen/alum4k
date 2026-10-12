@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { batchMedia, collectTmdb, createAdmin, deleteMedia, fetchSettings, fetchTmdbDetail, fetchUsers, importLibrary, saveMedia, saveSettings, searchTmdb, setUserVip, resetPassword } from "./api";
 import { classifyMedia, mediaCategories } from "../shared/media";
 import { defaultSettings, themes } from "../shared/site";
+import MediaImage from "./MediaImage";
 import { BrandMark, useSite } from "./SiteContext";
 import ResourceEditor, { cleanResources } from "./ResourceEditor";
 import AnnouncementDialog from "./AnnouncementDialog";
@@ -315,7 +316,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
           <th>影视</th><th>分类</th><th>资源</th><th>更新日期</th><th>操作</th>
         </tr></thead><tbody>{pageItems.map((item) => <tr key={item.id}>
           <td className="check-cell"><input type="checkbox" aria-label={`选择${item.title}`} checked={selected.includes(item.id)} disabled={busy} onChange={(event) => setSelected((ids) => event.target.checked ? [...ids, item.id] : ids.filter((id) => id !== item.id))} /></td>
-          <td><button className="table-media" type="button" disabled={busy} onClick={() => openDraft(item)}><span className="table-poster"><Film size={18} />{item.posterPath ? <img key={item.posterPath} src={item.posterPath} alt="" loading="lazy" onError={(event) => { event.currentTarget.style.display = "none"; }} /> : null}</span><span><strong>{item.title}{item.featured ? <em>推荐</em> : null}</strong><small>{item.year ?? "未知年份"} · {item.region}{item.tmdbId ? ` · TMDB ${item.tmdbId}` : ""}</small></span></button></td>
+          <td><button className="table-media" type="button" disabled={busy} onClick={() => openDraft(item)}><span className="table-poster"><Film size={18} />{item.posterPath ? <MediaImage src={item.posterPath} kind="thumbnail" alt="" /> : null}</span><span><strong>{item.title}{item.featured ? <em>推荐</em> : null}</strong><small>{item.year ?? "未知年份"} · {item.region}{item.tmdbId ? ` · TMDB ${item.tmdbId}` : ""}</small></span></button></td>
           <td><span className="table-tag">{item.category}</span></td><td>{item.resources?.length ? `${item.resources.length} 个链接` : <span className="muted">待补资源</span>}</td><td className="muted">{dateText(item.updatedAt ?? item.createdAt) || "—"}</td>
           <td><div className="table-actions"><button type="button" title="编辑" aria-label={`编辑${item.title}`} disabled={busy} onClick={() => openDraft(item)}><Pencil size={16} /></button><button type="button" title="删除" aria-label={`删除${item.title}`} disabled={busy} onClick={() => askDelete([item.id])}><Trash2 size={16} /></button></div></td>
         </tr>)}</tbody></table>{!pageItems.length ? <div className="admin-empty"><Database size={28} />没有匹配的影视条目</div> : null}</div>
@@ -326,7 +327,7 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
         <section className="admin-collect-search"><h2><Search size={18} />TMDB 采集</h2>
           <form className="admin-search" onSubmit={search}><input value={tmdbQuery} onChange={(event) => setTmdbQuery(event.target.value)} placeholder="搜索影视名" aria-label="搜索 TMDB" /><button type="submit" disabled={busy || !tmdbQuery.trim()}>{busy ? <Loader2 size={16} className="spin" /> : <Search size={16} />}搜索</button></form>
           <div className="tmdb-results">{tmdbResults.map((item) => <button className="tmdb-result" key={item.id} type="button" disabled={busy} onClick={() => importTmdb(item)}>
-            {item.posterPath ? <img src={item.posterPath} alt="" loading="lazy" /> : <span className="mini-poster" />}<span><strong>{item.title}</strong><small>{item.mediaType === "movie" ? "电影" : "剧集"} · {item.year ?? "未知年份"}</small></span>
+            {item.posterPath ? <MediaImage src={item.posterPath} kind="thumbnail" alt="" /> : <span className="mini-poster" />}<span><strong>{item.title}</strong><small>{item.mediaType === "movie" ? "电影" : "剧集"} · {item.year ?? "未知年份"}</small></span>
           </button>)}</div>{searched && !tmdbResults.length ? <div className="admin-empty">没有找到相关影视</div> : null}
         </section>
         <form className="admin-edit-form" onSubmit={(event) => { event.preventDefault(); save("save"); }}>

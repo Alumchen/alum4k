@@ -14,6 +14,9 @@ import { matchesExact } from "../shared/catalog";
 import { resolutions, dynamicRanges, videoCodecs } from "../shared/resources";
 import { listReports, submitReport, updateReport } from "./reports";
 import { mergeSeasons, validateSeasonFields, selectedSeasonNumber, seasonStatus } from "../shared/seasons";
+import { tmdbImages, imageContentType } from "./tmdb-images";
+import { validTmdbImage } from "../shared/tmdb-images";
+import crypto from "node:crypto";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
@@ -83,6 +86,18 @@ function validateResources(input: Partial<MediaItem>) {
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, tmdb: hasTmdbCredentials(), downloads: true, auth: true, playback: false });
+});
+
+app.get("/api/images/tmdb/:size/:file", async (request, response) => {
+  const { size, file } = request.params;
+  if (!validTmdbImage(size, file) || Object.keys(request.query).length) { response.status(400).end(); return; }
+  try {
+    const bytes = await tmdbImages.get(size, file);
+    const etag = `"${crypto.createHash("sha256").update(bytes).digest("hex")}"`;
+    response.set({ "Content-Type": imageContentType(bytes), "Cache-Control": "public, max-age=604800, immutable", "X-Content-Type-Options": "nosniff", ETag: etag });
+    if (request.get("If-None-Match") === etag) { response.status(304).end(); return; }
+    response.send(bytes);
+  } catch { response.set({ "Cache-Control": "no-store", "Retry-After": "30" }).status(502).end(); }
 });
 
 app.get("/api/settings", async (_request, response, next) => {
