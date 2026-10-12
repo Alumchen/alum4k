@@ -400,6 +400,8 @@ try {
   await page.getByRole("heading", { name: "验证电影", exact: true }).waitFor();
   assert.equal(await page.getByRole("tab").count(), 2);
   assert.equal(await page.locator(".resource-url-line").count(), 0);
+  assert.equal(await page.getByText("登录后可查看此链接", { exact: true }).count(), 1);
+  assert.equal(await page.getByText("登录并开通 VIP 后可查看此链接", { exact: true }).count(), 0);
   await page.goto(base + "/admin");
   await page.getByRole("heading", { name: "管理员登录" }).waitFor();
   await page.getByLabel("用户名", { exact: true }).fill("admin");

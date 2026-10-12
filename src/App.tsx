@@ -332,7 +332,7 @@ function DetailView({ item, currentUser, relatedItems, onOpenAuth, onBack, onSel
             {type === "115" ? <Download size={16} /> : <Link2 size={16} />}{type === "115" ? "115网盘" : "磁力链接"}<span>{resources.filter((resource) => resource.type === type).length}</span>
           </button>)}
         </div>
-        {visible.length ? <div className="download-list">{visible.map((resource) => resource.url ? <DownloadLink key={resource.id} resource={resource} mediaId={item.id} /> : <div className="download-row locked-resource" key={resource.id}><div><strong>{resource.title || downloadLabel(resource)}</strong><span className="resource-access vip">VIP</span><ResourceSummary resource={resource} /><small>{currentUser ? "VIP 会员可查看此链接" : "登录并开通 VIP 后可查看此链接"}</small></div>{!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : <Crown size={22} />}</div>)}</div>
+        {visible.length ? <div className="download-list">{visible.map((resource) => resource.url ? <DownloadLink key={resource.id} resource={resource} mediaId={item.id} /> : <div className="download-row locked-resource" key={resource.id}><div><strong>{resource.title || downloadLabel(resource)}</strong><span className="resource-access vip">VIP</span><ResourceSummary resource={resource} /><small>{currentUser ? "VIP 会员可查看此链接" : "登录后可查看此链接"}</small></div>{!currentUser ? <button className="locked-action" type="button" onClick={onOpenAuth}>登录 / 注册</button> : <Crown size={22} />}</div>)}</div>
           : <div className="resource-empty"><Download size={26} /><span>暂无{resourceType === "115" ? "115网盘" : "磁力"}链接</span></div>}
       </section>
       <aside className="episode-panel">
