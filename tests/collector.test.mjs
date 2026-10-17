@@ -152,3 +152,17 @@ test("site client refuses remote HTTP and never forwards administrator sessions 
   } });
   await assert.rejects(siteRequest("https://site.invalid", "/api/auth/me", { fetcher: async () => new Response("secret-bearing server error", { status: 401 }) }), (error) => !error.message.includes("secret-bearing"));
 });
+
+test("backfill verifies unnamed records and uses only the existing-item endpoint", async (t) => {
+  const directory = await temporary(t); const fixture = await torrentFixture();
+  const records = addMagnets([], fixture.magnet).records;
+  let uploaded = 0;
+  const uploader = await createUploader(directory, {
+    existingOnly: true, preflight: false, session: { site: "https://site.invalid", token: "test-only" }, log: () => {},
+    verify: async () => ({ status: "verified", torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString() }),
+    request: async (_site, endpoint) => { assert.equal(endpoint, "/api/admin/collector/backfill"); uploaded++; return { mediaId: "existing", added: true }; }
+  });
+  await uploader.enqueue(records); await uploader.close(); assert.equal(uploaded, 1);
+  const options = optionsFrom(["--sync", "--backfill"]);
+  assert.equal(options.sync, true); assert.equal(options.existingOnly, true); assert.equal(options.autoUpload, true);
+});

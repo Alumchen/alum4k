@@ -11,6 +11,7 @@ export function optionsFrom(args) {
   const options = { exe: "G:\\115-Desktop\\115-Desktop.exe", output: path.join(projectRoot, "data/115-collector"), context: {}, contextOverrides: {}, duration: 0 };
   for (let index = 0; index < args.length; index++) {
     const flag = args[index]; if (flag === "--help") { options.help = true; continue; }
+    if (flag === "--backfill") { options.existingOnly = true; options.autoUpload = true; continue; }
     if (flag === "--auto-upload" || flag === "--sync") { options[flag === "--sync" ? "sync" : "autoUpload"] = true; continue; }
     if (!["--exe", "--output", "--input", "--title", "--year", "--category", "--type", "--duration", "--aria2", "--timeout", "--media-id", "--season", "--source-date"].includes(flag) || !args[index + 1] || args[index + 1].startsWith("--")) throw new Error(`Unknown or incomplete option: ${flag}`);
     const value = args[++index];
@@ -58,6 +59,7 @@ export async function openCollection(directory) {
   };
 }
 function help() {
+  console.log("只补已有影视：--backfill（复制后检测并自动匹配）；已有采集记录用 npm run collect:115:backfill。\n允许追加不同磁力版本，重复哈希跳过；无法唯一匹配或季数不明不入库，不新建影视。");
   console.log("自动检测上传：先 npm run collect:115:login，再使用 --auto-upload；已有记录用 npm run collect:115:sync。\n检测器：--aria2 aria2c路径 --timeout 60（5-300秒）\n目标：--title 准确片名 --year 年份，或 --media-id 已有影视ID；多季影视用 --season 季数。\n可选 --source-date YYYY-MM-DD；未填写时使用网站实际导入日期，不冒充源站更新时间。\n元数据可解析不等于完整影片始终可下载；超时、无节点、无法确认的均跳过上传。");
   console.log("115 磁力收集器（手动复制，默认只保存；--auto-upload 才检测上传）\n用法：npm run collect:115 -- --title 影视名 --year 2026\n可选：--exe 程序路径 --output 保存目录 --input 本地TXT --duration 运行秒数\n      --category 电影/电视剧/综艺/动漫/少儿/短剧/纪录片/游戏 --type movie/tv\n只接收该软件在前台时新复制的 SHA-1 BTIH 磁力；启动前的剪贴板不会读取。\n命令：/title 新片名（清空年份和资源描述） /year 年份 /resource 资源名称\n      /size 大小 /quality 2160p / 4K（也可 1080p、720p、480p、其他）\n      /target 已有影视ID /season 季数 /date 来源日期YYYY-MM-DD\n      /status /export /quit\n未设置片名的链接只进入收集记录，不进入媒体库导入草稿。Ctrl+C 退出。");
 }
@@ -73,7 +75,7 @@ export async function main(args = process.argv.slice(2)) {
   const enqueue = (records) => uploader?.enqueue(records).catch((error) => { fatal = error; stop(); });
   process.on("SIGINT", stop); process.on("SIGTERM", stop);
   try {
-    if (options.autoUpload || options.sync) uploader = await createUploader(options.output, { executable: options.aria2, seconds: options.timeout, signal: controller.signal });
+    if (options.autoUpload || options.sync) uploader = await createUploader(options.output, { executable: options.aria2, seconds: options.timeout, signal: controller.signal, existingOnly: options.existingOnly });
     if (options.sync) { await uploader.enqueue(collection.records.map((record) => ({ ...record, ...cleanContext({ ...record, ...options.contextOverrides }) }))); return; }
     if (options.input) {
       if ((await stat(options.input)).size > 10 * 1024 * 1024) throw new Error("TXT 最大支持 10 MB。");

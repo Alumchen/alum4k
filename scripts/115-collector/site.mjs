@@ -14,7 +14,7 @@ export async function atomicJson(file, value) {
 }
 export async function siteRequest(site, endpoint, { token, body, signal, fetcher = fetch } = {}) {
   const origin = siteOrigin(site);
-  if (!["/api/auth/login", "/api/auth/me", "/api/admin/collector/import"].includes(endpoint)) throw new Error("Unsupported collector endpoint.");
+  if (!["/api/auth/login", "/api/auth/me", "/api/admin/collector/import", "/api/admin/collector/backfill"].includes(endpoint)) throw new Error("Unsupported collector endpoint.");
   const response = await fetcher(origin + endpoint, {
     method: body ? "POST" : "GET", redirect: "error",
     headers: { ...(body ? { "content-type": "application/json" } : {}), ...(token ? { authorization: `Bearer ${token}` } : {}) },

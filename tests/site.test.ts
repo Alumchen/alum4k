@@ -17,6 +17,7 @@ import { normalizeMediaItem } from "../server/library";
 import { genreTaxonomy, genreOptions, matchesGenre, toggleGenreTag } from "../shared/genres";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 import { torrentFixture } from "./torrent-fixture.mjs";
+import { matchCollectorTarget } from "../server/collector-match";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
 let adminToken: string;
@@ -83,7 +84,7 @@ test("verified collector imports require admin, fresh proof and identity, merge 
 
 test("collector never assigns multi-season resources without a confirmed season", async () => {
   const fixture = await torrentFixture("Series.S02.2160p.WEB-DL.mkv");
-  const item = { id: "collector-season-test", title: "Collector Series", mediaType: "tv", category: "电视剧", year: 2024, seasons: [{ number: 1, episodeCount: 10 }, { number: 2, episodeCount: 8 }], resources: [] };
+  const item = { id: "collector-season-test", title: "Collector Series", originalTitle: "Series", mediaType: "tv", category: "电视剧", year: 2024, seasons: [{ number: 1, episodeCount: 10 }, { number: 2, episodeCount: 8 }], resources: [] };
   await request("/api/admin/media", "POST", item, adminToken);
   try {
     const payload = { magnet: fixture.magnet, torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString(), mediaId: item.id, mediaType: "tv" };
@@ -92,7 +93,63 @@ test("collector never assigns multi-season resources without a confirmed season"
     const saved = (await request(`/api/media/${item.id}`, "GET", undefined, adminToken)).body.item;
     assert.equal(saved.resources.length, 1); assert.equal(saved.resources[0].seasonNumber, 2);
     assert.equal(saved.seasons.length, 2);
+    const another = await torrentFixture("Series.S01.2160p.WEB-DL.mkv");
+    const filled = await request("/api/admin/collector/backfill", "POST", { magnet: another.magnet, torrent: another.bytes.toString("base64"), checkedAt: new Date().toISOString() }, adminToken);
+    assert.equal(filled.status, 200); assert.equal(filled.body.mediaId, item.id); assert.equal(filled.body.added, true);
+    const seasons = (await request(`/api/media/${item.id}`, "GET", undefined, adminToken)).body.item.resources.map((resource: { seasonNumber: number }) => resource.seasonNumber).sort();
+    assert.deepEqual(seasons, [1, 2]);
   } finally { await request(`/api/admin/media/${item.id}`, "DELETE", undefined, adminToken); }
+});
+
+test("backfill identifies existing titles, aliases and seasons without guessing ambiguous matches", () => {
+  const movie = normalizeMediaItem({ id: "movie", title: "测试电影", originalTitle: "Test Movie", aliases: ["Another Name"], year: 2024, mediaType: "movie" });
+  const remake = { ...movie, id: "remake", year: 2025 };
+  const series = normalizeMediaItem({ id: "series", title: "多季测试", originalTitle: "Test Series", year: 2010, mediaType: "tv", seasons: [{ number: 1, episodeCount: 10 }, { number: 2, episodeCount: 8 }] });
+  assert.equal(matchCollectorTarget([movie, remake], {}, "Test.Movie.2024.2160p.WEB-DL.mkv").target.id, movie.id);
+  assert.equal(matchCollectorTarget([movie], {}, "Another_Name_2024_1080p.mkv").target.id, movie.id);
+  assert.equal(matchCollectorTarget([movie], {}, "测试电影[简繁中字].2024.2160p.mkv").target.id, movie.id);
+  const selected = matchCollectorTarget([series], {}, "Test_Series_S02_2019_2160p.mkv");
+  assert.equal(selected.target.id, series.id); assert.equal(selected.seasonNumber, 2);
+  for (const [items, input, filename] of [
+    [[movie, remake], {}, "Test.Movie.2160p.mkv"],
+    [[movie], {}, "Test.Movie.Other.2025.2160p.mkv"],
+    [[movie], {}, "Test.Movie.Other.2024.2160p.mkv"],
+    [[movie], {}, "Test.MovieLonger.2024.mkv"],
+    [[movie], {}, "Unknown.2024.mkv"],
+    [[series], {}, "Test.Series.2160p.mkv"],
+    [[series], {}, "Test.Series.S01-S02.2160p.mkv"],
+    [[series], {}, "Test.Series.S01.S02.2160p.mkv"],
+    [[series], { seasonNumber: 1 }, "Test.Series.S02.2160p.mkv"]
+  ] as const) assert.throws(() => matchCollectorTarget([...items], input, filename));
+});
+
+test("backfill only appends new versions to existing items and never creates unmatched items", async () => {
+  const endpoint = "/api/admin/collector/backfill";
+  const first = await torrentFixture("Backfill.Sample.2024.2160p.WEB-DL.mkv");
+  const second = await torrentFixture("Backfill.Sample.2024.2160p.BluRay.REMUX.mkv");
+  const unmatched = await torrentFixture("No.Such.Movie.2024.1080p.mkv");
+  const payload = (fixture: typeof first) => ({ magnet: fixture.magnet, torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString() });
+  const template = (await request("/api/media/test-movie", "GET", undefined, adminToken)).body.item;
+  const id = "backfill-existing";
+  await request("/api/admin/media", "POST", { ...template, id, tmdbId: undefined, title: "补充测试", originalTitle: "Backfill Sample" }, adminToken);
+  const before = (await request(`/api/media/${id}`, "GET", undefined, adminToken)).body.item;
+  const beforeIds = (await request("/api/media")).body.items.map((item: { id: string }) => item.id).sort();
+  assert.equal((await request(endpoint, "POST", payload(first))).status, 401);
+  assert.equal((await request(endpoint, "POST", payload(first), userToken)).status, 403);
+  try {
+    assert.equal((await request(endpoint, "POST", payload(first), adminToken)).body.added, true);
+    assert.equal((await request(endpoint, "POST", payload(second), adminToken)).body.added, true);
+    assert.equal((await request(endpoint, "POST", payload(first), adminToken)).body.added, false);
+    assert.equal((await request(endpoint, "POST", payload(unmatched), adminToken)).status, 400);
+    assert.equal((await request(endpoint, "POST", { ...payload(first), magnet: magnetUrl }, adminToken)).status, 400);
+    const saved = (await request(`/api/media/${id}`, "GET", undefined, adminToken)).body.item;
+    assert.equal(saved.resources.length, before.resources.length + 2);
+    assert.equal(saved.posterPath, before.posterPath); assert.equal(saved.overview, before.overview);
+    assert.deepEqual(saved.resources.slice(0, before.resources.length), before.resources);
+    assert.ok(saved.resources.slice(before.resources.length).every((resource: { access: string }) => resource.access === "vip"));
+    const afterIds = (await request("/api/media")).body.items.map((item: { id: string }) => item.id).sort();
+    assert.deepEqual(afterIds, beforeIds);
+  } finally { await request(`/api/admin/media/${id}`, "DELETE", undefined, adminToken); }
 });
 
 const testImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");

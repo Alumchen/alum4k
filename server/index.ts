@@ -98,6 +98,15 @@ app.post("/api/admin/collector/import", requireAdmin, limitAttempts(500), async 
   }
 });
 
+app.post("/api/admin/collector/backfill", requireAdmin, limitAttempts(500), async (request, response) => {
+  try {
+    const result = await importCollectorResource(request.body, true);
+    response.json({ added: result.added, mediaId: result.item.id, title: result.item.title });
+  } catch (error) {
+    response.status(400).json({ message: error instanceof Error ? error.message : "磁力补充失败。" });
+  }
+});
+
 app.get("/api/images/tmdb/:size/:file", async (request, response) => {
   const { size, file } = request.params;
   if (!validTmdbImage(size, file) || Object.keys(request.query).length) { response.status(400).end(); return; }

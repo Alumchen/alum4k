@@ -4,7 +4,7 @@ import path from "node:path";
 import { atomicJson, readSession, confirmAdmin, siteRequest } from "./site.mjs";
 import { verifyMagnet, checkAria } from "./verify.mjs";
 
-export async function createUploader(directory, { executable, seconds = 60, signal, verify = verifyMagnet, request = siteRequest, session, preflight = true, log = console.log } = {}) {
+export async function createUploader(directory, { executable, seconds = 60, signal, existingOnly = false, verify = verifyMagnet, request = siteRequest, session, preflight = true, log = console.log } = {}) {
   const portable = path.join(directory, "tools", process.platform === "win32" ? "aria2c.exe" : "aria2c");
   executable ??= (await stat(portable).catch(() => undefined))?.isFile() ? portable : "aria2c";
   session ??= await readSession(directory);
@@ -16,17 +16,19 @@ export async function createUploader(directory, { executable, seconds = 60, sign
   let pending = Promise.resolve();
   async function processRecord(record) {
     if (signal?.aborted) return;
-    const key = createHash("sha256").update(JSON.stringify([session.site, record.hash, record.mediaId || "", record.title, record.year, record.mediaType, record.seasonNumber])).digest("hex");
+    const identity = [session.site, record.hash, record.mediaId || "", record.title, record.year, record.mediaType, record.seasonNumber];
+    if (existingOnly) identity.push("existing-only");
+    const key = createHash("sha256").update(JSON.stringify(identity)).digest("hex");
     if (report[key]?.status === "uploaded") return;
     let result;
     try {
-      if (!record.mediaId && (!record.title || !record.year)) result = { status: "pending", reason: "需要准确片名和年份，或已有影视 ID" };
+      if (!existingOnly && !record.mediaId && (!record.title || !record.year)) result = { status: "pending", reason: "需要准确片名和年份，或已有影视 ID" };
       else {
         log("正在获取种子元数据，检测通过后才上传…");
         const checked = await verify(record, { executable, seconds, signal });
         if (checked.status !== "verified") result = { status: checked.status, reason: checked.reason };
         else if (!signal?.aborted) {
-          const saved = await request(session.site, "/api/admin/collector/import", { token: session.token, body: { ...record, torrent: checked.torrent, checkedAt: checked.checkedAt }, signal });
+          const saved = await request(session.site, existingOnly ? "/api/admin/collector/backfill" : "/api/admin/collector/import", { token: session.token, body: { ...record, torrent: checked.torrent, checkedAt: checked.checkedAt }, signal });
           if (typeof saved.mediaId !== "string" || typeof saved.added !== "boolean") throw new Error("网站未确认保存结果。");
           result = { status: "uploaded", mediaId: saved.mediaId, added: saved.added };
         }
