@@ -111,6 +111,7 @@ test("verifier only permits fresh hash-matched metadata; timeouts and cancellati
   let scratch;
   const result = await verifyMagnet(record, { seconds: 5, run: async (_exe, args) => {
     assert.equal(args.at(-1), fixture.magnet); assert.ok(args.includes("--bt-metadata-only=true")); assert.ok(args.includes("--no-conf=true"));
+    assert.ok(args.includes("--dht-entry-point=router.bittorrent.com:6881"), "fresh routing tables require an explicit trusted bootstrap node");
     scratch = args.find((value) => value.startsWith("--dir=")).slice(6);
     assert.ok(!args.some((value) => value.includes("127.0.0.1")));
     await writeFile(path.join(scratch, `${fixture.hash}.torrent`), fixture.bytes); return 0;

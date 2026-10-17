@@ -7,8 +7,8 @@ import { inspectMetadata, maximumMetadataBytes } from "./metadata.mjs";
 
 export function ariaArguments(hash, directory, seconds) {
   if (!/^[a-f0-9]{40}$/.test(hash) || !Number.isInteger(seconds) || seconds < 5 || seconds > 300) throw new Error("Invalid verification options.");
-  // No caller-provided trackers, web seeds, configuration files or RPC endpoint.
-  return ["--no-conf=true", "--no-netrc=true", "--enable-rpc=false", "--bt-metadata-only=true", "--bt-save-metadata=true", "--bt-load-saved-metadata=false", "--follow-torrent=false", "--seed-time=0", "--file-allocation=none", "--enable-dht=true", "--enable-dht6=false", "--bt-enable-lpd=false", "--enable-peer-exchange=true", "--listen-port=49152-65535", "--dht-listen-port=49152-65535", `--dht-file-path=${path.join(directory, "dht.dat")}`, `--stop=${seconds}`, `--bt-stop-timeout=${seconds}`, "--summary-interval=0", "--console-log-level=error", `--dir=${directory}`, `magnet:?xt=urn:btih:${hash}`];
+  // Fresh routing tables need a bootstrap node; never accept caller-provided endpoints.
+  return ["--no-conf=true", "--no-netrc=true", "--enable-rpc=false", "--bt-metadata-only=true", "--bt-save-metadata=true", "--bt-load-saved-metadata=false", "--follow-torrent=false", "--seed-time=0", "--file-allocation=none", "--enable-dht=true", "--enable-dht6=false", "--dht-entry-point=router.bittorrent.com:6881", "--bt-enable-lpd=false", "--enable-peer-exchange=true", "--listen-port=49152-65535", "--dht-listen-port=49152-65535", `--dht-file-path=${path.join(directory, "dht.dat")}`, `--stop=${seconds}`, `--bt-stop-timeout=${seconds}`, "--summary-interval=0", "--console-log-level=error", `--dir=${directory}`, `magnet:?xt=urn:btih:${hash}`];
 }
 export function runAria(executable, args, milliseconds, signal) {
   return new Promise((resolve, reject) => {
