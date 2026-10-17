@@ -7,6 +7,7 @@ import { addPublicPageLocations } from "../scripts/public-pages.mjs";
 import { publishBuild } from "../scripts/publish-build.mjs";
 import { tmdbImageFile, tmdbImageSource, validTmdbImage } from "../shared/tmdb-images";
 import { createTmdbImageCache, imageContentType } from "../server/tmdb-images";
+import { addMagnets, libraryDraft } from "../scripts/115-collector/core.mjs";
 import { classifyMedia, extractDownloadLink, isDownloadUrl, resourceHref } from "../shared/media";
 import { cleanResources } from "../src/ResourceEditor";
 import { resourceDisplayMetadata } from "../shared/resources";
@@ -40,6 +41,18 @@ test("latest homepage groups use category and update date, limited to two rows",
   const items = [{ ...base, id: "old", createdAt: "2026-01-01" }, { ...base, id: "recent", updatedAt: "2026-10-08" }, { ...base, id: "tv", category: "电视剧", updatedAt: "2026-10-09" }, { ...base, id: "new", createdAt: "2026-10-01" }];
   assert.deepEqual(latestCategoryItems(items, "电影", 2).map((item) => item.id), ["recent", "new"]);
   assert.equal(latestCategoryItems(items, "综艺", 4).length, 0);
+});
+
+test("115 collector draft imports through the existing admin flow without publishing free links", async () => {
+  const records = addMagnets([], `magnet:?xt=urn:btih:${"f".repeat(40)}`, { title: "采集兼容测试", year: 2020, category: "纪录片", mediaType: "movie", quality: "2160p / 4K" }).records;
+  const draft = libraryDraft(records);
+  try {
+    assert.equal((await request("/api/admin/media/import", "POST", { items: draft }, adminToken)).status, 200);
+    const saved = (await request(`/api/media/${draft[0].id}`, "GET", undefined, adminToken)).body.item;
+    assert.equal(saved.title, "采集兼容测试"); assert.equal(saved.category, "纪录片"); assert.equal(saved.mediaType, "movie");
+    assert.equal(saved.resources[0].resolution, "2160p / 4K");
+    assert.equal((await request(`/api/media/${draft[0].id}`)).body.item.resources[0].url, "");
+  } finally { await request(`/api/admin/media/${draft[0].id}`, "DELETE", undefined, adminToken); }
 });
 
 const testImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
