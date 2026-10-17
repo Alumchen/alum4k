@@ -17,6 +17,7 @@ import { mergeSeasons, validateSeasonFields, selectedSeasonNumber, seasonStatus 
 import { tmdbImages, imageContentType } from "./tmdb-images";
 import { validTmdbImage } from "../shared/tmdb-images";
 import crypto from "node:crypto";
+import { importCollectorResource } from "./collector";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
@@ -86,6 +87,15 @@ function validateResources(input: Partial<MediaItem>) {
 
 app.get("/api/health", (_request, response) => {
   response.json({ ok: true, tmdb: hasTmdbCredentials(), downloads: true, auth: true, playback: false });
+});
+
+app.post("/api/admin/collector/import", requireAdmin, limitAttempts(500), async (request, response) => {
+  try {
+    const result = await importCollectorResource(request.body);
+    response.json({ added: result.added, mediaId: result.item.id, title: result.item.title });
+  } catch (error) {
+    response.status(400).json({ message: error instanceof Error ? error.message : "采集上传失败。" });
+  }
 });
 
 app.get("/api/images/tmdb/:size/:file", async (request, response) => {

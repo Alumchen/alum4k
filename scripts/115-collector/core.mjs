@@ -30,7 +30,12 @@ export function cleanContext(input = {}) {
   const year = input.year === undefined || input.year === "" ? undefined : Number(input.year);
   if (year !== undefined && (!Number.isInteger(year) || year < 1800 || year > 2199)) throw new Error("year: expected 1800-2199.");
   if (!categories.includes(category) || !["movie", "tv"].includes(mediaType) || !resolutions.includes(quality)) throw new Error("Invalid category, media type or quality.");
-  return { title, year, category, mediaType, resourceTitle, size, quality };
+  const mediaId = text("mediaId", 100);
+  const sourceUpdatedAt = text("sourceUpdatedAt", 10);
+  if (sourceUpdatedAt && (!/^\d{4}-\d{2}-\d{2}$/.test(sourceUpdatedAt) || !Number.isFinite(Date.parse(sourceUpdatedAt)) || new Date(sourceUpdatedAt).toISOString().slice(0, 10) !== sourceUpdatedAt)) throw new Error("Invalid source update date.");
+  const seasonNumber = input.seasonNumber === undefined || input.seasonNumber === "" ? undefined : Number(input.seasonNumber);
+  if (seasonNumber !== undefined && (!Number.isSafeInteger(seasonNumber) || seasonNumber < 0 || seasonNumber > 1000)) throw new Error("Invalid season number.");
+  return { title, year, category, mediaType, resourceTitle, size, quality, ...(mediaId ? { mediaId } : {}), ...(sourceUpdatedAt ? { sourceUpdatedAt } : {}), ...(seasonNumber !== undefined ? { seasonNumber } : {}) };
 }
 
 export function addMagnets(records, text, context = {}, now = new Date().toISOString()) {
@@ -58,6 +63,7 @@ export function validateCollection(input) {
     const context = cleanContext(item);
     for (const key of ["title", "category", "mediaType", "resourceTitle", "size", "quality"]) if (typeof item[key] !== "string" || item[key] !== context[key]) throw new Error("Invalid stored collector metadata.");
     if (item.year !== context.year || typeof item.displayName !== "string" || item.displayName.length > 500 || /[\x00-\x1f]/.test(item.displayName)) throw new Error("Invalid stored collector metadata.");
+    for (const key of ["mediaId", "seasonNumber", "sourceUpdatedAt"]) if (item[key] !== context[key]) throw new Error("Invalid stored collector target or source date.");
     hashes.add(item.hash);
   }
   return input.records;

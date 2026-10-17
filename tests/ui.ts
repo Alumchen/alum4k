@@ -99,6 +99,24 @@ try {
   const preview = await context.newPage();
   preview.on("pageerror", (error) => errors.push(error.message));
   const template = (await (await fetch(api.base + "/api/media")).json()).items[0];
+  const collectedPreview = await context.newPage();
+  const collectedItem = { ...template, id: "collector-preview", title: "采集资源预览", resources: [{ id: "sample", type: "magnet", access: "free", url: magnetUrl, title: "Sample.2024.2160p.BluRay.REMUX.UHD.HDR10.mkv", size: "50.09 GB", resolution: "2160p / 4K", qualityLabel: "4K蓝光原盘", sourceUpdatedAt: "2026-10-14T00:00:00+08:00", updatedAt: "2026-10-17T00:00:00Z" }] };
+  await collectedPreview.route("**/api/media/collector-preview", (route) => route.fulfill({ json: { item: collectedItem } }));
+  await collectedPreview.route("**/api/media", (route) => route.fulfill({ json: { items: [collectedItem] } }));
+  await collectedPreview.goto(base + "/movie/collector-preview");
+  for (const width of [1440, 390]) {
+    await collectedPreview.setViewportSize({ width, height: 1000 });
+    await collectedPreview.getByText("Sample.2024.2160p.BluRay.REMUX.UHD.HDR10.mkv", { exact: true }).waitFor();
+    assert.equal(await collectedPreview.locator(".resource-meta-quality").textContent(), "4K蓝光原盘");
+    assert.equal(await collectedPreview.locator(".resource-meta-size").textContent(), "50.09 GB");
+    assert.equal(await collectedPreview.locator(".resource-meta-date").textContent(), "2026-10-14");
+    const heading = await collectedPreview.locator(".resource-url-line").boundingBox(), details = await collectedPreview.locator(".resource-metadata").boundingBox();
+    assert.ok(heading && details && details.y >= heading.y + heading.height);
+    await collectedPreview.getByRole("button", { name: "复制链接", exact: true }).waitFor();
+    await checkOverflow(collectedPreview, `collector resource ${width}`);
+    await capture(collectedPreview, `collector-resource-${width}.png`);
+  }
+  await collectedPreview.close();
   await preview.route("**/api/media", (route) => route.fulfill({ json: { items: ["电视剧", "电影", "综艺", "动漫"].flatMap((category) => Array.from({ length: 24 }, (_, index) => ({ ...template, id: `${category}-${index}`, title: `${category}测试${index + 1}`, category, updatedAt: new Date(Date.UTC(2026, 9, 1, index)).toISOString() }))) } }));
   await preview.goto(base);
   for (const width of [1440, 390]) {

@@ -170,7 +170,7 @@ function saveItem(items: MediaItem[], input: Partial<MediaItem>, currentId?: str
   const next = normalizeMediaItem({ ...input, id: existing?.id ?? input.id, createdAt: existing?.createdAt ?? input.createdAt }, items.map((item) => item.id), existing?.id);
   next.resources = next.resources?.map((resource) => {
     const old = existing ? normalizeResources(existing).find((entry) => entry.id === resource.id) : undefined;
-    const fields = ["url", "code", "title", "size", "note", "access", "seasonNumber", "resolution", "dynamicRange", "videoCodec", "subtitles", "audio", "availability"] as const;
+    const fields = ["url", "code", "title", "size", "note", "access", "seasonNumber", "resolution", "dynamicRange", "videoCodec", "subtitles", "audio", "availability", "qualityLabel", "sourceUpdatedAt"] as const;
     const unchanged = old && fields.every((key) => (old[key] ?? "") === (resource[key] ?? ""));
     const sameLink = old?.url === resource.url;
     const checked = resource.availability !== "unknown";
@@ -188,6 +188,24 @@ export async function upsertMedia(input: Partial<MediaItem>, currentId?: string)
     const next = saveItem(items, input, currentId);
     await saveRawLibrary(items);
     return next;
+  });
+}
+
+export function appendCollectorResource(target: Partial<MediaItem>, resource: DownloadResource, hash: string, existingOnly = false) {
+  return mutateLibrary(async (items) => {
+    const existing = items.find((item) => item.id === target.id || (target.tmdbId && item.tmdbId === target.tmdbId && item.mediaType === target.mediaType));
+    if (!existing && existingOnly) throw new Error("目标影视已被删除，未上传。");
+    if (existing && existing.mediaType !== target.mediaType) throw new Error("目标影视类型已改变，未上传。");
+    if (existing?.mediaType === "tv" && existing.seasons?.length && !existing.seasons.some((season) => season.number === resource.seasonNumber)) throw new Error("目标影视季数已改变，请重新确认，未上传。");
+    const resources = existing ? normalizeResources(existing) : [];
+    const hasHash = (value: string) => {
+      try { const url = new URL(value); return url.protocol === "magnet:" && url.searchParams.getAll("xt").some((xt) => xt.toLowerCase() === `urn:btih:${hash}`); } catch { return false; }
+    };
+    if (resources.some((entry) => entry.type === "magnet" && entry.seasonNumber === resource.seasonNumber && hasHash(entry.url))) return { item: publicMedia(existing!), added: false };
+    if (resources.length >= 500) throw new Error("该影视的下载链接已达 500 个，未新增。");
+    const next = saveItem(items, { ...(existing ?? target), resources: [...resources, resource] }, existing?.id);
+    await saveRawLibrary(items);
+    return { item: next, added: true };
   });
 }
 

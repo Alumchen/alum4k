@@ -16,6 +16,7 @@ import { mapTmdbDetail } from "../server/tmdb";
 import { normalizeMediaItem } from "../server/library";
 import { genreTaxonomy, genreOptions, matchesGenre, toggleGenreTag } from "../shared/genres";
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
+import { torrentFixture } from "./torrent-fixture.mjs";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
 let adminToken: string;
@@ -53,6 +54,44 @@ test("115 collector draft imports through the existing admin flow without publis
     assert.equal(saved.resources[0].resolution, "2160p / 4K");
     assert.equal((await request(`/api/media/${draft[0].id}`)).body.item.resources[0].url, "");
   } finally { await request(`/api/admin/media/${draft[0].id}`, "DELETE", undefined, adminToken); }
+});
+
+test("verified collector imports require admin, fresh proof and identity, merge without replacing metadata", async () => {
+  const fixture = await torrentFixture();
+  const payload = { magnet: fixture.magnet, torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString(), title: "验证电影", year: 2024, mediaType: "movie", sourceUpdatedAt: "2026-10-14" };
+  const endpoint = "/api/admin/collector/import";
+  assert.equal((await request(endpoint, "POST", payload)).status, 401);
+  assert.equal((await request(endpoint, "POST", payload, userToken)).status, 403);
+  for (const invalid of [{ ...payload, magnet: magnetUrl }, { ...payload, checkedAt: "2020-01-01" }, { ...payload, torrent: "bogus" }, { ...payload, title: "" }, { ...payload, title: "无匹配的影视" }, { ...payload, mediaId: "deleted" }, { ...payload, sourceUpdatedAt: "2026-02-31" }]) assert.equal((await request(endpoint, "POST", invalid, adminToken)).status, 400);
+  const before = (await request("/api/media/test-movie", "GET", undefined, adminToken)).body.item;
+  const saved = await Promise.all([request(endpoint, "POST", payload, adminToken), request(endpoint, "POST", payload, adminToken)]);
+  assert.ok(saved.every((response) => response.status === 200));
+  assert.equal(saved.filter((response) => response.body.added).length, 1);
+  const after = (await request("/api/media/test-movie", "GET", undefined, adminToken)).body.item;
+  assert.equal(after.posterPath, before.posterPath); assert.equal(after.overview, before.overview); assert.deepEqual(after.cast, before.cast);
+  assert.equal(after.resources.length, before.resources.length + 1);
+  const resource = after.resources.find((entry: { url: string }) => entry.url === fixture.magnet);
+  assert.equal(resource.access, "vip"); assert.equal(resource.availability, "unknown");
+  assert.equal(resource.size, "1.00 GB"); assert.equal(resource.qualityLabel, "WEB-4K");
+  assert.equal(resourceDisplayMetadata(resource).updated, "2026-10-14");
+  const guest = (await request("/api/media/test-movie")).body.item.resources.find((entry: { id: string }) => entry.id === resource.id);
+  assert.equal(guest.url, "");
+  assert.equal((await request(endpoint, "POST", { ...payload, resourceTitle: "attempted overwrite" }, adminToken)).body.added, false);
+  await request("/api/admin/media/test-movie", "PUT", before, adminToken);
+});
+
+test("collector never assigns multi-season resources without a confirmed season", async () => {
+  const fixture = await torrentFixture("Series.S02.2160p.WEB-DL.mkv");
+  const item = { id: "collector-season-test", title: "Collector Series", mediaType: "tv", category: "电视剧", year: 2024, seasons: [{ number: 1, episodeCount: 10 }, { number: 2, episodeCount: 8 }], resources: [] };
+  await request("/api/admin/media", "POST", item, adminToken);
+  try {
+    const payload = { magnet: fixture.magnet, torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString(), mediaId: item.id, mediaType: "tv" };
+    for (const patch of [{}, { seasonNumber: 3 }, { seasonNumber: "2" }, { mediaType: "movie", seasonNumber: 2 }]) assert.equal((await request("/api/admin/collector/import", "POST", { ...payload, ...patch }, adminToken)).status, 400);
+    assert.equal((await request("/api/admin/collector/import", "POST", { ...payload, seasonNumber: 2 }, adminToken)).status, 200);
+    const saved = (await request(`/api/media/${item.id}`, "GET", undefined, adminToken)).body.item;
+    assert.equal(saved.resources.length, 1); assert.equal(saved.resources[0].seasonNumber, 2);
+    assert.equal(saved.seasons.length, 2);
+  } finally { await request(`/api/admin/media/${item.id}`, "DELETE", undefined, adminToken); }
 });
 
 const testImage = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");

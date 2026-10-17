@@ -7,6 +7,11 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { magnetLinks, addMagnets, cleanContext, libraryDraft, validateCollection } from "../scripts/115-collector/core.mjs";
 import { openCollection, optionsFrom, main } from "../scripts/115-collector/collect.mjs";
+import { torrentFixture } from "./torrent-fixture.mjs";
+import { inspectMetadata } from "../scripts/115-collector/metadata.mjs";
+import { ariaArguments, verifyMagnet, runAria } from "../scripts/115-collector/verify.mjs";
+import { createUploader } from "../scripts/115-collector/sync.mjs";
+import { siteOrigin, siteRequest, atomicJson } from "../scripts/115-collector/site.mjs";
 
 const magnet = (digit) => `magnet:?xt=urn:btih:${digit.repeat(40)}`;
 async function temporary(t) {
@@ -87,4 +92,63 @@ test("Windows clipboard helper self-test is ASCII, filtered and does not read th
   const helper = fileURLToPath(new URL("../scripts/115-collector/watch-clipboard.ps1", import.meta.url));
   const result = spawnSync(executable, ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-STA", "-File", helper, "-SelfTest"], { windowsHide: true, encoding: "utf8", timeout: 15000 });
   assert.equal(result.status, 0, result.stderr); assert.equal(JSON.parse(result.stdout.trim()).ok, true);
+});
+
+test("metadata is parsed from torrent bytes and must match the requested hash", async () => {
+  for (const [name, quality] of [["Sample.2160p.BluRay.REMUX.mkv", "4K蓝光原盘"], ["Sample.2160p.BluRay.mkv", "4K蓝光"], ["Sample.2160p.WEB-DL.mkv", "WEB-4K"]]) {
+    const fixture = await torrentFixture(name);
+    const result = await inspectMetadata(fixture.magnet, fixture.bytes);
+    assert.equal(result.name, name); assert.equal(result.qualityLabel, quality); assert.equal(result.size, "1.00 GB");
+    await assert.rejects(inspectMetadata(magnet("a"), fixture.bytes));
+  }
+  await assert.rejects(inspectMetadata(magnet("a"), Buffer.alloc(2097153)));
+  await assert.rejects(inspectMetadata(magnet("a"), Buffer.from("not a torrent")));
+});
+
+test("verifier only permits fresh hash-matched metadata; timeouts and cancellation are not uploaded", async () => {
+  const fixture = await torrentFixture();
+  const record = { hash: fixture.hash, magnet: fixture.magnet + "&xs=http://127.0.0.1/secret&tr=http://127.0.0.1/announce" };
+  let scratch;
+  const result = await verifyMagnet(record, { seconds: 5, run: async (_exe, args) => {
+    assert.equal(args.at(-1), fixture.magnet); assert.ok(args.includes("--bt-metadata-only=true")); assert.ok(args.includes("--no-conf=true"));
+    scratch = args.find((value) => value.startsWith("--dir=")).slice(6);
+    assert.ok(!args.some((value) => value.includes("127.0.0.1")));
+    await writeFile(path.join(scratch, `${fixture.hash}.torrent`), fixture.bytes); return 0;
+  } });
+  assert.equal(result.status, "verified"); assert.equal(result.metadata.hash, fixture.hash);
+  await assert.rejects(readdir(scratch));
+  assert.equal((await verifyMagnet(record, { seconds: 5, run: async () => 1 })).status, "unknown");
+  assert.equal((await verifyMagnet({ ...record, hash: "b".repeat(40) })).status, "invalid");
+  const controller = new AbortController(); controller.abort();
+  assert.equal((await verifyMagnet(record, { signal: controller.signal, run: async () => 0 })).status, "unknown");
+  assert.throws(() => ariaArguments("invalid", "x", 5));
+  await assert.rejects(runAria("alum4k-no-such-aria2-executable", [], 20));
+});
+
+test("upload queue skips unknown, invalid and missing identity, serializes work and resumes", async (t) => {
+  const directory = await temporary(t); const fixture = await torrentFixture();
+  const base = { ...addMagnets([], fixture.magnet, { title: "Sample", year: 2024 }).records[0] };
+  let uploaded = 0; let checked = 0;
+  const config = { preflight: false, session: { site: "https://site.invalid", token: "test-only" }, log: () => {},
+    verify: async (record) => { checked++; return record.title === "Unknown" ? { status: "unknown", reason: "no peers" } : record.title === "Invalid" ? { status: "invalid", reason: "mismatch" } : { status: "verified", torrent: fixture.bytes.toString("base64"), checkedAt: new Date().toISOString() }; },
+    request: async (_site, endpoint, options) => { uploaded++; assert.equal(endpoint, "/api/admin/collector/import"); assert.equal(options.body.torrent, fixture.bytes.toString("base64")); return { mediaId: "sample", added: true }; }
+  };
+  const uploader = await createUploader(directory, config);
+  await Promise.all([uploader.enqueue([base, { ...base, title: "Unknown" }, { ...base, title: "Invalid" }, { ...base, title: "" }]), uploader.enqueue([base])]);
+  await uploader.close(); assert.equal(uploaded, 1); assert.equal(checked, 3);
+  const report = JSON.parse(await readFile(path.join(directory, "upload-report.json"), "utf8"));
+  assert.deepEqual(Object.values(report).map((item) => item.status).sort(), ["invalid", "pending", "unknown", "uploaded"]);
+  assert.ok(!JSON.stringify(report).includes("test-only")); assert.ok(!JSON.stringify(report).includes("torrent"));
+  const resumed = await createUploader(directory, config); await resumed.enqueue([base]); await resumed.close(); assert.equal(uploaded, 1);
+  await atomicJson(path.join(directory, "upload-report.json"), []);
+  await assert.rejects(createUploader(directory, config), /损坏/);
+});
+
+test("site client refuses remote HTTP and never forwards administrator sessions across redirects", async () => {
+  assert.equal(siteOrigin("https://www.alum4k.com/"), "https://www.alum4k.com");
+  for (const value of ["http://site.invalid", "https://user:pass@site.invalid", "https://site.invalid/admin", "https://site.invalid/?token=secret", "file:///x"]) assert.throws(() => siteOrigin(value));
+  await siteRequest("http://127.0.0.1:1234", "/api/auth/me", { token: "test-token", fetcher: async (_url, options) => {
+    assert.equal(options.redirect, "error"); assert.equal(options.headers.authorization, "Bearer test-token"); return new Response('{"user":{"role":"admin"}}');
+  } });
+  await assert.rejects(siteRequest("https://site.invalid", "/api/auth/me", { fetcher: async () => new Response("secret-bearing server error", { status: 401 }) }), (error) => !error.message.includes("secret-bearing"));
 });
