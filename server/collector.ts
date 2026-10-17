@@ -47,7 +47,6 @@ export async function importCollectorResource(input: Record<string, unknown>) {
     url: `magnet:?xt=urn:btih:${metadata.hash}`, access: "vip", size: metadata.size,
     resolution: metadata.resolution, qualityLabel: metadata.qualityLabel,
     sourceUpdatedAt: sourceUpdatedAt ? `${sourceUpdatedAt}T00:00:00+08:00` : undefined,
-    seasonNumber: seasonNumber as number | undefined,
-    note: "已取得哈希匹配的种子元数据，不代表保证完整下载。"
+    seasonNumber: seasonNumber as number | undefined
   }, metadata.hash, items.some((item) => item.id === target.id));
 }

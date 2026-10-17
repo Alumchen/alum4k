@@ -73,6 +73,7 @@ test("verified collector imports require admin, fresh proof and identity, merge 
   const resource = after.resources.find((entry: { url: string }) => entry.url === fixture.magnet);
   assert.equal(resource.access, "vip"); assert.equal(resource.availability, "unknown");
   assert.equal(resource.size, "1.00 GB"); assert.equal(resource.qualityLabel, "WEB-4K");
+  assert.equal(resource.note, "");
   assert.equal(resourceDisplayMetadata(resource).updated, "2026-10-14");
   const guest = (await request("/api/media/test-movie")).body.item.resources.find((entry: { id: string }) => entry.id === resource.id);
   assert.equal(guest.url, "");
