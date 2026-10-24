@@ -72,7 +72,7 @@ test("Windows imports are atomic, merge published flags, and upgrade old workben
   const workbench = (await request("/api/admin/workbench", "GET", undefined, token)).body;
   await writeFile(path.join(api.directory, "data/workbench.json"), JSON.stringify({ settings: workbench.settings, plugins: workbench.plugins.filter((plugin: { id: string }) => plugin.id !== "alumwindows") }));
   const upgraded = (await request("/api/admin/workbench", "GET", undefined, token)).body;
-  assert.equal(upgraded.plugins.length, 2); assert.equal(upgraded.plugins.find((plugin: { id: string }) => plugin.id === "alumwindows").enabled, true);
+  assert.equal(upgraded.plugins.length, 3); assert.equal(upgraded.plugins.find((plugin: { id: string }) => plugin.id === "alumwindows").enabled, true);
   await request("/api/admin/workbench", "PUT", { ...workbench, plugins: workbench.plugins.map((plugin: { id: string }) => ({ ...plugin, enabled: plugin.id !== "alumwindows" })) }, token);
   assert.equal((await request("/api/windows")).status, 503); assert.equal((await fetch(api.base + "/windows")).status, 503); assert.equal((await fetch(api.base + "/windows/admin")).status, 200);
   assert.equal((await request("/api/admin/windows", "GET", undefined, token)).status, 200);

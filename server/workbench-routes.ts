@@ -18,7 +18,7 @@ export function addWorkbenchRoutes(app: Express) {
     try {
       const settings = await loadSettings(); const origin = siteOrigin(settings, request);
       response.setHeader("Cache-Control", "no-store");
-      response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${escapeHtml(origin)}/workbench-sitemap.xml</loc></sitemap>${settings.access.requireLogin || !await mediaPluginEnabled() ? "" : `<sitemap><loc>${escapeHtml(origin)}/yingshi/sitemap.xml</loc></sitemap>`}</sitemapindex>`);
+      response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${escapeHtml(origin)}/workbench-sitemap.xml</loc></sitemap>${await pluginEnabled("alumxinsj") ? `<sitemap><loc>${escapeHtml(origin)}/xinsj/sitemap.xml</loc></sitemap>` : ""}${settings.access.requireLogin || !await mediaPluginEnabled() ? "" : `<sitemap><loc>${escapeHtml(origin)}/yingshi/sitemap.xml</loc></sitemap>`}</sitemapindex>`);
     } catch (error) { next(error); }
   });
   app.get("/workbench-sitemap.xml", async (request, response, next) => { try { const origin = siteOrigin(await loadSettings(), request); response.setHeader("Cache-Control", "no-store"); response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${escapeHtml(origin)}/</loc></url>${await pluginEnabled("alumwindows") ? `<url><loc>${escapeHtml(origin)}/windows</loc></url><url><loc>${escapeHtml(origin)}/windows/faq</loc></url>` : ""}</urlset>`); } catch (error) { next(error); } });

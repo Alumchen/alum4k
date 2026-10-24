@@ -7,7 +7,7 @@ export interface PluginManifest {
   category: string;
   entry: string;
   adminEntry: string;
-  icon: "film" | "monitor";
+  icon: "film" | "monitor" | "cpu";
   logo: string;
 }
 export interface PluginPreferences { id: string; name: string; description: string; enabled: boolean; order: number; }

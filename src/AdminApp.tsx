@@ -8,8 +8,9 @@ import WorkbenchAdmin from "./WorkbenchAdmin";
 import { defaultWorkbench } from "../shared/workbench";
 import { mediaBase } from "../shared/paths";
 import WindowsAdmin from "./WindowsAdmin";
+import ChipAdmin from "./ChipAdmin";
 
-export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "media" | "windows" }) {
+export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "media" | "windows" | "chips" }) {
   const { settings } = useSite();
   const [user, setUser] = useState<User | null>(null);
   const [library, setLibrary] = useState<MediaItem[]>([]);
@@ -20,15 +21,18 @@ export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "m
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [workbenchName, setWorkbenchName] = useState(defaultWorkbench.settings.name);
+  const appName = scope === "chips" ? "Alum芯世界" : scope === "windows" ? "AlumWindows" : scope === "workbench" ? workbenchName : settings.branding.name;
+  const appEntry = scope === "chips" ? "/xinsj" : scope === "windows" ? "/windows" : scope === "workbench" ? "/" : mediaBase;
+  const appLogo = scope === "chips" ? "/xinsj.svg" : scope === "windows" ? "/windows.svg" : "/brand.svg";
   useEffect(() => { if (scope === "workbench") { fetch("/api/workbench").then((response) => response.json()).then((data) => setWorkbenchName(data.settings.name)).catch(() => undefined); } }, [scope]);
   useEffect(() => {
     if (scope === "media") return;
-    document.title = scope === "windows" ? "AlumWindows · 管理后台" : `${workbenchName} · 工作台管理`;
+    document.title = `${appName} · 管理后台`;
     let robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]');
     if (!robots) { robots = document.createElement("meta"); robots.name = "robots"; document.head.append(robots); }
     robots.content = "noindex, nofollow";
-    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (icon) icon.href = scope === "windows" ? "/windows.svg" : "/brand.svg";
-  }, [scope, workbenchName]);
+    const icon = document.querySelector<HTMLLinkElement>('link[rel="icon"]'); if (icon) icon.href = appLogo;
+  }, [scope, appName, appLogo]);
 
   async function refreshLibrary() { setLibrary(await fetchMedia()); }
   useEffect(() => {
@@ -60,18 +64,19 @@ export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "m
   if (user?.role === "admin") {
     if (scope === "workbench") return <WorkbenchAdmin onLogout={logout} />;
     if (scope === "windows") return <WindowsAdmin onLogout={logout} />;
+    if (scope === "chips") return <ChipAdmin onLogout={logout} />;
     if (!ready) return <div className="admin-gate"><Loader2 className="spin" size={26} /><span>{message || "正在读取媒体库…"}</span>{message ? <button type="button" onClick={() => refreshLibrary().then(() => { setReady(true); setMessage(""); }).catch((error) => setMessage(error.message))}>重试</button> : null}</div>;
     return <AdminPanel library={library} currentUser={user} onLibraryChange={refreshLibrary} onLogout={logout} />;
   }
   return <main className="admin-login-page">
-    <a className="admin-login-brand" href={scope === "windows" ? "/windows" : scope === "workbench" ? "/" : mediaBase}>{scope !== "media" ? <img className="brand-logo" src={scope === "windows" ? "/windows.svg" : "/brand.svg"} alt="" /> : <BrandMark />}<span>{scope === "windows" ? "AlumWindows" : scope === "workbench" ? workbenchName : settings.branding.name}</span></a>
+    <a className="admin-login-brand" href={appEntry}>{scope !== "media" ? <img className="brand-logo" src={appLogo} alt="" /> : <BrandMark />}<span>{appName}</span></a>
     <form className="admin-login-form auth-fields" onSubmit={submit}>
       <LockKeyhole size={28} className="admin-login-icon" /><h1>管理员登录</h1>
       <label>用户名<input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required /></label>
       <label>密码<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" autoComplete="current-password" required minLength={6} /></label>
       {message ? <p className="form-error" role="alert">{message}</p> : null}
       <button type="submit" className="primary-action" disabled={busy}>{busy ? <Loader2 className="spin" size={17} /> : <LogIn size={17} />}{busy ? "正在登录…" : "登录后台"}</button>
-      <a className="admin-return-link" href={scope === "windows" ? "/windows" : scope === "workbench" ? "/" : mediaBase}><ArrowLeft size={15} />返回网站</a>
+      <a className="admin-return-link" href={appEntry}><ArrowLeft size={15} />返回网站</a>
     </form>
   </main>;
 }

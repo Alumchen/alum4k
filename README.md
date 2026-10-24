@@ -267,6 +267,12 @@ TMDB 海报、背景图与后台缩略图按显示尺寸使用同站点 `/api/im
 
 ## 验证
 
+### Alum芯世界插件
+
+半导体工艺制造技术社区已接入工作台：前台 `/xinsj`，独立后台 `/xinsj/admin`。支持工艺领域分类、文章/问答/视频/资料、发帖、评论、点赞收藏、内容审核、置顶精华、公告、公约和分类设置。使用原有账号；用户投稿和评论默认审核后公开。数据位于忽略提交的 `data/xinsj/`，不影响影视与 Windows 插件。详情、素材来源和操作说明见 [插件文档](plugins/alumxinsj/README.md)。
+
+执行 `npm run test:xinsj` 验证社区完整交互；`npm run test:production` 同时检查正式构建的社区样式和图片加载。
+
 ```bash
 npm test
 npm run build

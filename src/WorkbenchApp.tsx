@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowRight, ArrowUpRight, Clock3, Film, Monitor, LayoutGrid, LockKeyhole, LogIn, LogOut, Moon, Search, Settings2, Star, Sun, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, Clock3, Cpu, Film, Monitor, LayoutGrid, LockKeyhole, LogIn, LogOut, Moon, Search, Settings2, Star, Sun, X } from "lucide-react";
 import { defaultWorkbench, type WorkbenchData } from "../shared/workbench";
 import type { InstalledPlugin } from "../shared/plugins";
 import "./workbench.css";
@@ -9,7 +9,7 @@ import { fetchCurrentUser, setAuthToken } from "./api";
 import type { User } from "./types";
 
 function stored<T>(key: string, fallback: T): T { try { return JSON.parse(localStorage.getItem(key) || "null") ?? fallback; } catch { return fallback; } }
-function PluginSymbol({ plugin }: { plugin: InstalledPlugin }) { const Icon = plugin.icon === "monitor" ? Monitor : Film; return <Icon size={17} />; }
+function PluginSymbol({ plugin }: { plugin: InstalledPlugin }) { const Icon = plugin.icon === "cpu" ? Cpu : plugin.icon === "monitor" ? Monitor : Film; return <Icon size={17} />; }
 export default function WorkbenchApp() {
   const [data, setData] = useState<WorkbenchData>({ settings: defaultWorkbench.settings, plugins: [] });
   const [loading, setLoading] = useState(true); const [error, setError] = useState("");

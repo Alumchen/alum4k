@@ -12,7 +12,7 @@ const output = path.join(projectRoot, "artifacts/ui");
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 const app = express();
 app.use("/assets", express.static(path.join(api.directory, "dist/assets"), { fallthrough: false }));
-app.get(["/windows.svg", "/brand.svg"], (request, response) => response.sendFile(path.join(api.directory, "dist", path.basename(request.path))));
+app.get(["/windows.svg", "/brand.svg", "/xinsj.svg", "/xinsj-banner.jpg"], (request, response) => response.sendFile(path.join(api.directory, "dist", path.basename(request.path))));
 app.use((request, response) => {
   const upstream = httpRequest(new URL(request.originalUrl, api.base), { method: request.method, headers: request.headers }, (result) => { response.writeHead(result.statusCode || 502, result.headers); result.pipe(response); });
   upstream.on("error", () => { if (!response.headersSent) response.status(502).end("Test API unavailable"); else response.destroy(); });
@@ -57,8 +57,17 @@ try {
   assert.ok(requests.some((url) => /\/AdminApp-[^/]+\.css$/.test(url)));
   assert.equal(await page.locator(".windows-editor").count(), 0);
   await check(page, "production-windows-admin.png");
+  await page.goto(origin + "/xinsj"); await page.locator(".chip-post").first().waitFor();
+  assert.equal(await page.locator(".chip-layout").evaluate((element) => getComputedStyle(element).display), "grid");
+  await page.locator(".chip-banner-photo").evaluate((image) => (image as HTMLImageElement).decode());
+  assert.ok(requests.some((url) => /\/chips-[^/]+\.css$/.test(url)));
+  await check(page, "production-xinsj-desktop.png");
+  await page.setViewportSize({ width: 390, height: 844 }); await check(page, "production-xinsj-mobile.png");
+  await page.goto(origin + "/xinsj/admin"); await page.getByRole("heading", { name: "帖子管理", exact: true }).waitFor();
+  assert.equal(await page.locator(".chip-admin-sidebar .chip-brand img").evaluate((image) => image.getBoundingClientRect().width), 34);
+  await check(page, "production-xinsj-admin.png");
   assert.deepEqual(errors, []);
-  console.log("Production UI passed: hashed CSS requests and computed styles for Windows, workbench, media and Windows admin; cold load, refresh, desktop/mobile logo bounds.");
+  console.log("Production UI passed: hashed CSS, images and computed styles for Windows, workbench, media and semiconductor community/admin; cold load, refresh and desktop/mobile layouts.");
 } catch (error) {
   const page = browser?.contexts()[0]?.pages()[0]; if (page) await page.screenshot({ path: path.join(output, "production-failure.png"), fullPage: false });
   throw error;

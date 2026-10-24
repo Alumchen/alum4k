@@ -63,7 +63,10 @@ try {
   await page.getByRole("button", { name: "切换浅色", exact: true }).click();
   await page.getByRole("button", { name: "编辑布局", exact: true }).click();
   const handle = page.getByRole("button", { name: "拖动排序 待办事项", exact: true });
-  await handle.focus(); await handle.press("Space"); await page.locator(".desk-dragging").waitFor(); await handle.press("ArrowRight");
+  await handle.focus(); await handle.press("Space"); await page.locator(".desk-dragging").waitFor();
+  // KeyboardSensor attaches its move listeners after activation and layout measurement.
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await handle.press("ArrowRight");
   await page.waitForFunction(() => { const element = document.querySelector(".desk-dragging"); return element && new DOMMatrixReadOnly(getComputedStyle(element).transform).m41 > 20; });
   await handle.press("Space");
   await saved(); assert.notEqual(await page.locator(".desk-widget").first().getAttribute("data-widget"), "tasks");

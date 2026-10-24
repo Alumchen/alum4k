@@ -24,7 +24,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
     } catch { if (request === settingsRequest.current) setSettingsError("暂时无法读取站点设置，请重试。"); }
   }, []);
   const [personalTheme, setPersonalTheme] = useState(savedTheme);
-  const admin = /^\/(?:(?:yingshi|windows)\/)?admin(?:\/|$)/.test(location.pathname);
+  const admin = /^\/(?:(?:yingshi|windows|xinsj)\/)?admin(?:\/|$)/.test(location.pathname);
   const theme = !admin && personalTheme ? personalTheme : settings.branding.theme;
   function toggleTheme() {
     const next = theme === "light" ? "dark" : "light";
@@ -39,7 +39,7 @@ export function SiteProvider({ children }: { children: ReactNode }) {
   useEffect(() => { reloadSettings(); }, [reloadSettings]);
   useEffect(() => { document.documentElement.dataset.theme = theme; }, [theme]);
   useEffect(() => {
-    if (/^\/(?:windows\/)?admin(?:\/|$)/.test(location.pathname)) return;
+    if (/^\/(?:(?:windows|xinsj)\/)?admin(?:\/|$)/.test(location.pathname)) return;
     const title = settings.seo.title || settings.branding.name;
     if (admin) document.title = settings.seo.adminTitle || `${title} · 管理后台`;
     for (const [name, content] of admin ? [["description", settings.seo.description], ["robots", "noindex, nofollow"]] : []) {
