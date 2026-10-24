@@ -19,6 +19,7 @@ import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 import { torrentFixture } from "./torrent-fixture.mjs";
 import { matchCollectorTarget } from "../server/collector-match";
 import { pluginRegistry } from "../shared/workbench";
+import { emptyDashboard } from "../shared/dashboard";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
 let adminToken: string;
@@ -38,6 +39,31 @@ before(async () => {
   await request("/api/admin/users/normal_user/vip", "PUT", { vip: false }, adminToken);
 });
 after(async () => { await api?.close(); });
+
+test("personal workspaces require authentication, isolate owners and reject stale writes", async () => {
+  const endpoint = "/api/workbench/me";
+  assert.equal((await request(endpoint)).status, 401);
+  assert.equal((await request(endpoint, "PUT", emptyDashboard())).status, 401);
+  const initial = (await request(endpoint, "GET", undefined, userToken)).body;
+  assert.equal(initial.revision, 0); assert.equal(initial.layout.length, 4);
+  const input = { ...initial, username: "admin", projects: [{ id: "project", name: "私人项目", description: "项目备注" }], tasks: [{ id: "task", title: "私人任务", done: false, priority: "high", projectId: "project", dueDate: "2026-10-24", notes: "不能公开的备注" }], notes: [{ id: "note", title: "备忘", content: "<script>纯文本</script>" }], events: [{ id: "event", title: "日程", start: "2026-10-24T09:30" }] };
+  const saved = await request(endpoint, "PUT", input, userToken); assert.equal(saved.status, 200); assert.equal(saved.body.revision, 1); assert.equal(saved.body.username, undefined);
+  const admin = (await request(endpoint, "GET", undefined, adminToken)).body; assert.equal(admin.tasks.length, 0);
+  assert.equal((await request(endpoint, "GET", undefined, userToken)).body.tasks[0].title, "私人任务");
+  assert.equal((await request(endpoint, "PUT", input, userToken)).status, 409);
+  for (const route of ["/api/workbench", "/", "/api/admin/workbench"]) {
+    const response = await fetch(api.base + route, { headers: { authorization: `Bearer ${adminToken}` } });
+    assert.equal((await response.text()).includes("不能公开的备注"), false);
+  }
+  const invalid = [{ tasks: [{ ...input.tasks[0], done: "true" }] }, { tasks: [{ ...input.tasks[0], projectId: "missing" }] }, { tasks: [{ ...input.tasks[0], dueDate: "2026-02-30" }] }, { notes: [input.notes[0], input.notes[0]] }, { events: [{ ...input.events[0], start: "2026-10-24T99:00" }] }, { layout: [] }, { layout: [{ ...initial.layout[0], id: "unknown" }, ...initial.layout.slice(1)] }, { revision: -1 }];
+  for (const patch of invalid) assert.equal((await request(endpoint, "PUT", { ...saved.body, ...patch }, userToken)).status, 400);
+  assert.equal((await request(endpoint, "GET", undefined, userToken)).body.revision, 1);
+  const concurrent = await Promise.all([1, 2].map((index) => request(endpoint, "PUT", { ...saved.body, notes: [{ ...input.notes[0], title: String(index) }] }, userToken)));
+  assert.deepEqual(concurrent.map((response) => response.status).sort(), [200, 409]);
+  const files = await readdir(path.join(api.directory, "data/dashboards")); assert.equal(files.length, 1); assert.match(files[0], /^[a-f0-9]{64}\.json$/);
+  const onDisk = JSON.parse(await readFile(path.join(api.directory, "data/dashboards", files[0]), "utf8")); assert.equal(onDisk.revision, 2);
+  assert.equal((await request(endpoint, "PUT", { ...emptyDashboard(), revision: 2 }, userToken)).status, 200);
+});
 
 test("workbench is public and its independent admin requires the existing admin account", async () => {
   const publicData = await request("/api/workbench");

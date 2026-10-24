@@ -1,5 +1,6 @@
 import type { Express } from "express";
-import { requireAdmin } from "./auth";
+import { requireAdmin, requireAuth, type AuthenticatedRequest } from "./auth";
+import { loadDashboard, saveDashboard, DashboardConflict } from "./dashboard";
 import { installedPlugins } from "../shared/workbench";
 import { loadWorkbench, saveWorkbench, mediaPluginEnabled } from "./workbench";
 import { loadSettings } from "./settings";
@@ -7,6 +8,8 @@ import { renderWorkbenchPage } from "./workbench-pages";
 import { siteOrigin, escapeHtml } from "./seo";
 
 export function addWorkbenchRoutes(app: Express) {
+  app.get("/api/workbench/me", requireAuth, async (request: AuthenticatedRequest, response, next) => { try { response.json(await loadDashboard(request.user!.username)); } catch (error) { next(error); } });
+  app.put("/api/workbench/me", requireAuth, async (request: AuthenticatedRequest, response) => { try { response.json(await saveDashboard(request.user!.username, request.body)); } catch (error) { response.status(error instanceof DashboardConflict ? 409 : 400).json({ message: error instanceof Error ? error.message : "保存失败。" }); } });
   app.get("/api/workbench", async (_request, response, next) => { try { const store = await loadWorkbench(); response.json({ settings: store.settings, plugins: installedPlugins(store).filter((plugin) => plugin.enabled) }); } catch (error) { next(error); } });
   app.get("/api/admin/workbench", requireAdmin, async (_request, response, next) => { try { const store = await loadWorkbench(); response.json({ ...store, installed: installedPlugins(store) }); } catch (error) { next(error); } });
   app.put("/api/admin/workbench", requireAdmin, async (request, response) => { try { const store = await saveWorkbench(request.body); response.json({ ...store, installed: installedPlugins(store) }); } catch (error) { response.status(400).json({ message: error instanceof Error ? error.message : "保存失败。" }); } });

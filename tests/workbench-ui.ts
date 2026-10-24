@@ -39,6 +39,51 @@ try {
   await page.getByRole("button", { name: "清空", exact: true }).click(); assert.equal(await page.locator(".wb-recent").count(), 0);
   for (const width of [390, 320]) { await page.setViewportSize({ width, height: 844 }); await screenshot(page, `workbench-mobile-${width}.png`); }
   await page.setViewportSize({ width: 1440, height: 1000 });
+  page.on("dialog", (dialog) => dialog.accept());
+  await page.getByRole("button", { name: "登录工作台", exact: true }).click();
+  await page.getByRole("dialog").getByLabel("用户名", { exact: true }).fill("admin");
+  await page.getByRole("dialog").getByLabel("密码", { exact: true }).fill(adminPassword);
+  await page.getByRole("dialog").getByRole("button", { name: "登录", exact: true }).click();
+  await page.locator('[data-widget="tasks"]').waitFor();
+  async function saved() { await page.waitForFunction(() => document.querySelector(".desk-save-state")?.textContent === "已保存"); }
+  await page.getByRole("button", { name: "新建项目", exact: true }).click();
+  await page.getByLabel("项目名称", { exact: true }).fill("Alum 工作台升级"); await page.getByLabel("项目备注", { exact: true }).fill("功能与体验改进");
+  await page.getByRole("button", { name: "保存项目", exact: true }).click();
+  await page.getByLabel("新增待办", { exact: true }).fill("完善个人桌面"); await page.getByRole("button", { name: "添加待办", exact: true }).click();
+  await page.getByRole("button", { name: "编辑任务 完善个人桌面", exact: true }).click();
+  await page.getByLabel("优先级", { exact: true }).selectOption("high"); await page.getByLabel("截止日期", { exact: true }).fill("2026-10-24");
+  await page.getByLabel("所属项目", { exact: true }).selectOption({ label: "Alum 工作台升级" });
+  await page.getByLabel("详细备注", { exact: true }).fill("先验证保存和数据隔离"); await page.getByRole("button", { name: "保存任务", exact: true }).click();
+  await page.getByRole("button", { name: "新建便签", exact: true }).click();
+  await page.getByLabel("便签标题", { exact: true }).fill("今天的想法"); await page.getByLabel("便签正文", { exact: true }).fill("模块化工作台，先从每天会用的功能开始。\n纯文本 <script> 不会执行。");
+  await page.getByRole("button", { name: "添加日程", exact: true }).click(); await page.getByLabel("日程标题", { exact: true }).fill("工作台迭代复盘");
+  await page.getByLabel("开始时间（北京时间）", { exact: true }).fill("2026-10-24T16:00"); await page.getByRole("button", { name: "保存日程", exact: true }).click();
+  await saved(); await screenshot(page, "personal-desktop.png");
+  await page.getByRole("button", { name: "切换深色", exact: true }).click(); await screenshot(page, "personal-dark.png");
+  await page.getByRole("button", { name: "切换浅色", exact: true }).click();
+  await page.getByRole("button", { name: "编辑布局", exact: true }).click();
+  const handle = page.getByRole("button", { name: "拖动排序 待办事项", exact: true });
+  await handle.focus(); await handle.press("Space"); await handle.press("ArrowRight"); await handle.press("Space");
+  await saved(); assert.notEqual(await page.locator(".desk-widget").first().getAttribute("data-widget"), "tasks");
+  await page.getByLabel("待办事项宽度", { exact: true }).selectOption("wide"); await saved(); assert.equal(await page.locator('[data-widget="tasks"]').evaluate((element) => element.classList.contains("desk-wide")), true);
+  await page.getByRole("button", { name: "隐藏我的项目", exact: true }).click(); await saved(); assert.equal(await page.locator('[data-widget="projects"]').count(), 0);
+  await page.getByRole("button", { name: "添加模块", exact: true }).click(); await page.getByRole("dialog").getByLabel("我的项目", { exact: true }).check(); await page.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
+  await page.getByRole("button", { name: "完成布局", exact: true }).click();
+  await page.getByLabel("便签正文", { exact: true }).fill("切换导航后也要自动保存"); await page.getByRole("button", { name: "我的常用" }).click();
+  await saved(); await page.getByRole("button", { name: "全部应用" }).click();
+  await page.reload(); await page.getByLabel("便签正文", { exact: true }).waitFor(); assert.equal(await page.getByLabel("便签正文", { exact: true }).inputValue(), "切换导航后也要自动保存");
+  await page.route("**/api/workbench/me", (route) => route.request().method() === "PUT" ? route.fulfill({ status: 500, json: { message: "测试保存失败" } }) : route.continue());
+  await page.getByLabel("便签正文", { exact: true }).fill("保存失败时保留草稿"); await page.getByRole("alert").filter({ hasText: "测试保存失败" }).waitFor();
+  assert.equal(await page.getByLabel("便签正文", { exact: true }).inputValue(), "保存失败时保留草稿");
+  const download = page.waitForEvent("download"); await page.getByRole("button", { name: "导出个人数据", exact: true }).click(); assert.match((await download).suggestedFilename(), /^alum-workspace-/);
+  await page.unroute("**/api/workbench/me"); await page.getByRole("button", { name: "重试", exact: true }).click(); await saved();
+  await page.getByRole("checkbox", { name: "完成 完善个人桌面", exact: true }).click(); await saved();
+  await page.getByRole("button", { name: "已完成", exact: true }).click(); await page.getByRole("checkbox", { name: "完成 完善个人桌面", exact: true }).waitFor();
+  for (const width of [390, 320]) { await page.setViewportSize({ width, height: 844 }); await screenshot(page, `personal-mobile-${width}.png`); }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  const privateGuest = await browser.newContext(); const anonymous = await privateGuest.newPage(); await anonymous.goto(origin); await anonymous.locator(".wb-personal-gate").waitFor();
+  assert.equal(await anonymous.getByText("今天的想法", { exact: true }).count(), 0); assert.equal(await anonymous.locator(".personal-workspace").count(), 0); await privateGuest.close();
+  await page.getByRole("button", { name: "退出工作台", exact: true }).click(); await page.locator(".wb-personal-gate").waitFor();
   await page.goto(origin + "/admin"); await page.getByRole("heading", { name: "管理员登录", exact: true }).waitFor();
   assert.match(await page.locator('meta[name="robots"]').getAttribute("content") || "", /noindex/);
   await page.getByLabel("密码", { exact: true }).fill(adminPassword); await page.getByRole("button", { name: "登录后台", exact: true }).click();
@@ -66,6 +111,6 @@ try {
   await guest.goto(origin + "/yingshi/movie/test-movie"); await guest.getByRole("heading", { name: "验证电影", exact: true }).waitFor();
   assert.equal(await guest.getByText("登录后可查看此链接", { exact: true }).count() > 0, true);
   await guestContext.close(); assert.deepEqual(errors, []);
-  console.log("Workbench UI passed: application entry, search/favorites/recent, theme persistence, desktop/320/390 layouts, settings, module disable/enable and both admin entries.");
+  console.log("Workbench UI passed: private tasks/projects/notes/calendar, autosave/recovery/export, keyboard layout sorting, widget sizes/visibility, search/favorites/recent, theme persistence, desktop/320/390 layouts and both admin entries.");
 } catch (error) { const page = browser?.contexts()[0]?.pages()[0]; if (page) await page.screenshot({ path: path.join(output, "workbench-failure.png"), fullPage: true }); throw error; }
 finally { await browser?.close(); if (web.exitCode === null) { const ended = new Promise<void>((resolve) => web.once("exit", () => resolve())); web.kill(); await ended; } await api.close(); }
