@@ -9,7 +9,12 @@ const workbenchAdmin = path === "/admin" || path.startsWith("/admin/");
 const media = isMediaArea(path);
 const windows = path === "/windows" || path.startsWith("/windows/");
 const windowsAdmin = /^\/windows\/admin(?:\/|$)/.test(path);
-const Page = React.lazy(() => workbenchAdmin || windowsAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? import("./AdminApp") : media ? import("./App") : windows ? import("./WindowsApp") : import("./WorkbenchApp"));
+// Separate lazy boundaries prevent bundling from merging page-specific CSS dependencies.
+const AdminPage = React.lazy(() => import("./AdminApp"));
+const MediaPage = React.lazy(() => import("./App"));
+const WindowsPage = React.lazy(() => import("./WindowsApp"));
+const WorkbenchPage = React.lazy(() => import("./WorkbenchApp"));
+const Page = workbenchAdmin || windowsAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? AdminPage : media ? MediaPage : windows ? WindowsPage : WorkbenchPage;
 const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : windowsAdmin ? { scope: "windows" as const } : {})} /></React.Suspense>;
 
 class PageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {

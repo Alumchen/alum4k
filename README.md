@@ -35,6 +35,8 @@
 
 开发者更新发布用快照：`npm run collect:windows`。这不会安装、启动或下载所列软件。界面验证：`PLAYWRIGHT_CHANNEL=msedge npm run test:windows`（PowerShell 先设置环境变量）。
 
+正式发布前运行 `npm run test:production`。该检查会先构建前端，再通过临时 API 和静态资源服务器加载真实哈希资源，验证 Windows、工作台与后台样式、Logo 尺寸及手机布局，避免仅在开发模式正常而生产页面缺失分包 CSS。页面入口使用独立的 `React.lazy` 边界，不把多个动态导入放入同一个条件加载回调。
+
 ## 本地运行
 
 需要 Node.js 20+。

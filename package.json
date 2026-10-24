@@ -18,6 +18,7 @@
     "test:ui": "node --import tsx tests/ui.ts",
     "test:workbench": "node --import tsx tests/workbench-ui.ts",
     "test:windows": "node --import tsx tests/windows-ui.ts",
+    "test:production": "npm run build && node --import tsx tests/production-ui.ts",
     "preview": "vite preview --host 0.0.0.0",
     "serve:api": "tsx server/index.ts",
     "start": "npm run serve:api"

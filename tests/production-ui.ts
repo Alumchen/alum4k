@@ -1,0 +1,65 @@
+import assert from "node:assert/strict";
+import { createServer, request as httpRequest } from "node:http";
+import { mkdir } from "node:fs/promises";
+import path from "node:path";
+import express from "express";
+import { chromium, type Page } from "playwright";
+import { startTestApi, projectRoot, adminPassword } from "./fixtures";
+import { publishBuild } from "../scripts/publish-build.mjs";
+
+const api = await startTestApi();
+const output = path.join(projectRoot, "artifacts/ui");
+let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
+const app = express();
+app.use("/assets", express.static(path.join(api.directory, "dist/assets"), { fallthrough: false }));
+app.get(["/windows.svg", "/brand.svg"], (request, response) => response.sendFile(path.join(api.directory, "dist", path.basename(request.path))));
+app.use((request, response) => {
+  const upstream = httpRequest(new URL(request.originalUrl, api.base), { method: request.method, headers: request.headers }, (result) => { response.writeHead(result.statusCode || 502, result.headers); result.pipe(response); });
+  upstream.on("error", () => { if (!response.headersSent) response.status(502).end("Test API unavailable"); else response.destroy(); });
+  request.pipe(upstream);
+});
+const server = createServer(app); const errors: string[] = []; const requests: string[] = [];
+async function check(page: Page, name: string) {
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `${name} overflows`);
+  await page.screenshot({ path: path.join(output, name), fullPage: false });
+}
+try {
+  await mkdir(output, { recursive: true });
+  await publishBuild(path.join(projectRoot, "dist"), path.join(api.directory, "dist"));
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const origin = `http://127.0.0.1:${(server.address() as import("node:net").AddressInfo).port}`;
+  browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHANNEL ? { channel: process.env.PLAYWRIGHT_CHANNEL } : {}) });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  const page = await context.newPage(); page.on("pageerror", (error) => errors.push(error.message));
+  page.on("response", (response) => { if (response.url().endsWith(".css") && response.ok()) requests.push(new URL(response.url()).pathname); });
+  await page.goto(origin + "/windows"); await page.locator(".win-release").first().waitFor();
+  assert.equal(await page.locator(".win-layout").evaluate((element) => getComputedStyle(element).display), "grid", "Production Windows lazy-loaded CSS must be applied");
+  assert.equal(await page.locator(".win-brand img").evaluate((image) => image.getBoundingClientRect().width), 36, "The production logo must not use its intrinsic full-width size");
+  assert.ok(requests.some((url) => /\/WindowsApp-[^/]+\.css$/.test(url)), "Production entry must request the Windows stylesheet");
+  await check(page, "production-windows-desktop.png");
+  await page.reload(); await page.locator(".win-release").first().waitFor();
+  assert.equal(await page.locator(".win-layout").evaluate((element) => getComputedStyle(element).display), "grid");
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(await page.locator(".win-brand img").evaluate((image) => image.getBoundingClientRect().width), 31);
+  assert.equal(await page.locator(".win-mobile-category").isVisible(), true);
+  await check(page, "production-windows-mobile.png");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(origin + "/"); await page.locator(".wb-app").first().waitFor();
+  assert.equal(await page.locator(".workbench").evaluate((element) => getComputedStyle(element).display), "grid");
+  assert.ok(requests.some((url) => /\/WorkbenchApp-[^/]+\.css$/.test(url)));
+  await check(page, "production-workbench-desktop.png");
+  await page.goto(origin + "/yingshi"); await page.locator(".media-card").first().waitFor();
+  await check(page, "production-media-desktop.png");
+  await page.goto(origin + "/windows/admin"); await page.getByRole("heading", { name: "管理员登录", exact: true }).waitFor();
+  assert.equal(await page.locator(".admin-login-brand img").evaluate((image) => image.getBoundingClientRect().width < 100), true);
+  await page.getByLabel("密码", { exact: true }).fill(adminPassword); await page.getByRole("button", { name: "登录后台", exact: true }).click();
+  await page.getByRole("heading", { name: "资源管理", exact: true }).waitFor();
+  assert.ok(requests.some((url) => /\/AdminApp-[^/]+\.css$/.test(url)));
+  assert.equal(await page.locator(".windows-editor").count(), 0);
+  await check(page, "production-windows-admin.png");
+  assert.deepEqual(errors, []);
+  console.log("Production UI passed: hashed CSS requests and computed styles for Windows, workbench, media and Windows admin; cold load, refresh, desktop/mobile logo bounds.");
+} catch (error) {
+  const page = browser?.contexts()[0]?.pages()[0]; if (page) await page.screenshot({ path: path.join(output, "production-failure.png"), fullPage: false });
+  throw error;
+} finally { await browser?.close(); await new Promise<void>((resolve) => server.close(() => resolve())); await api.close(); }
