@@ -10,7 +10,8 @@ const port = await freePort();
 const web = spawn(process.execPath, [path.join(projectRoot, "node_modules/vite/bin/vite.js"), "--host", "127.0.0.1", "--port", String(port), "--strictPort"], {
   cwd: projectRoot, env: { ...process.env, API_ORIGIN: api.base }, windowsHide: true, stdio: "ignore"
 });
-const base = `http://127.0.0.1:${port}`;
+const origin = `http://127.0.0.1:${port}`;
+const base = origin + "/yingshi";
 const output = path.join(projectRoot, "artifacts/ui");
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 const errors: string[] = [];
@@ -1008,7 +1009,7 @@ try {
   const targetPath = `/${target.mediaType}/${encodeURIComponent(target.id)}`;
   await locked.goto(base + targetPath);
   await locked.getByRole("heading", { name: "登录", exact: true }).waitFor();
-  assert.equal(new URL(locked.url()).pathname, targetPath);
+  assert.equal(new URL(locked.url()).pathname, "/yingshi" + targetPath);
   assert.equal(await locked.locator(".download-panel, .detail-hero").count(), 0);
   await locked.getByLabel("用户名", { exact: true }).fill("open_ui_member");
   await locked.getByLabel("密码", { exact: true }).fill("wrong-password");
@@ -1018,7 +1019,7 @@ try {
   await locked.getByLabel("密码", { exact: true }).fill("test-member-password");
   await locked.getByRole("button", { name: "登录", exact: true }).click();
   await locked.getByRole("heading", { name: target.title, exact: true }).waitFor();
-  assert.equal(new URL(locked.url()).pathname, targetPath);
+  assert.equal(new URL(locked.url()).pathname, "/yingshi" + targetPath);
   await locked.reload();
   await locked.getByRole("heading", { name: target.title, exact: true }).waitFor();
   assert.equal(await locked.locator(".public-login-page").count(), 0);
@@ -1035,7 +1036,7 @@ try {
   await locked.getByLabel("密码", { exact: true }).fill("test-private-password");
   await locked.getByRole("button", { name: "注册", exact: true }).click();
   await locked.getByRole("heading", { name: target.title, exact: true }).waitFor();
-  assert.equal(new URL(locked.url()).pathname, targetPath);
+  assert.equal(new URL(locked.url()).pathname, "/yingshi" + targetPath);
   const reset = await fetch(api.base + "/api/admin/users/private_ui_member/password", { method: "PUT", headers: { "content-type": "application/json", authorization: `Bearer ${auth.token}` }, body: JSON.stringify({ password: "reset-private-password" }) });
   assert.equal(reset.status, 200);
   await locked.reload();

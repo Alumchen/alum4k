@@ -15,6 +15,7 @@
     "collect:115:sync": "node scripts/115-collector/collect.mjs --sync",
     "collect:115:backfill": "node scripts/115-collector/collect.mjs --sync --backfill",
     "test:ui": "node --import tsx tests/ui.ts",
+    "test:workbench": "node --import tsx tests/workbench-ui.ts",
     "preview": "vite preview --host 0.0.0.0",
     "serve:api": "tsx server/index.ts",
     "start": "npm run serve:api"

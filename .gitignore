@@ -15,4 +15,5 @@ artifacts/
 data/cache/
 .alum4k-build.*/
 data/115-collector/
+data/workbench.json
 **/site-session.json

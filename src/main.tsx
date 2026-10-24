@@ -2,9 +2,13 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import "./styles.css";
 import { SiteProvider } from "./SiteContext";
+import { isMediaArea } from "../shared/paths";
 
-const Page = React.lazy(() => window.location.pathname === "/admin" || window.location.pathname.startsWith("/admin/")
-  ? import("./AdminApp") : import("./App"));
+const path = window.location.pathname;
+const workbenchAdmin = path === "/admin" || path.startsWith("/admin/");
+const media = isMediaArea(path);
+const Page = React.lazy(() => workbenchAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? import("./AdminApp") : media ? import("./App") : import("./WorkbenchApp"));
+const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : {})} /></React.Suspense>;
 
 class PageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -16,8 +20,6 @@ class PageBoundary extends React.Component<{ children: React.ReactNode }, { fail
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PageBoundary><SiteProvider><React.Suspense fallback={<div className="admin-gate">正在加载…</div>}>
-      <Page />
-    </React.Suspense></SiteProvider></PageBoundary>
+    <PageBoundary>{media || workbenchAdmin ? <SiteProvider>{content}</SiteProvider> : content}</PageBoundary>
   </React.StrictMode>
 );

@@ -48,6 +48,7 @@ import MediaImage from "./MediaImage";
 import { catalogPath, defaultFilters, filterCatalog, latestCategoryItems, mediaPath, parseDetailPath, readCatalogUrl, paginateCatalog, catalogPageNumbers, type CatalogFilters } from "../shared/catalog";
 import { getSeasons, isSeasonNumber, resourcesForSeason, seasonLabel, seasonStatus, selectedSeasonNumber } from "../shared/seasons";
 import { genreOptions, genreTaxonomy } from "../shared/genres";
+import { mediaBase, isMediaHome } from "../shared/paths";
 
 const navItems = [
   { label: "首页", icon: Home },
@@ -159,7 +160,7 @@ function Sidebar({ active, onChange }: { active: string; onChange: (value: strin
             </button>
           );
         })}
-      </nav>
+      </nav><a className="media-workbench-link" href="/"><ArrowLeft size={16} />返回工作台</a>
     </aside>
   );
 }
@@ -171,7 +172,7 @@ function Topbar({ query, onQuery, onSearch, currentUser, onOpenAuth, onLogout, o
 }) {
   const { settings, theme, toggleTheme } = useSite();
   return <header className="topbar">
-    <a className="mobile-brand" href="/"><BrandMark /><span>{settings.branding.name}</span></a>
+    <a className="mobile-brand" href={mediaBase}><BrandMark /><span>{settings.branding.name}</span></a>
     <SearchBox items={items} query={query} onQuery={onQuery} onSearch={onSearch} onSelect={onSelect} />
     <div className="top-actions">
       <button type="button" title="求片" aria-label="求片" onClick={onRequests}><Film size={18} /><span>求片</span></button>
@@ -512,7 +513,7 @@ export default function App() {
   const libraryRequest = useRef(0);
   const detailRoute = parseDetailPath(pathname);
   const selected = detailRoute ? items.find((item) => item.id === detailRoute.id && item.mediaType === detailRoute.mediaType) : undefined;
-  const missing = !loading && !loadError && (pathname !== "/" && !selected);
+  const missing = !loading && !loadError && (!isMediaHome(pathname) && !selected);
   usePageSeo(selected, missing, Boolean(catalog.query && !selected), !settingsReady || !authReady || (settings.access.requireLogin && !currentUser));
 
   async function refreshLibrary() {
@@ -523,7 +524,7 @@ export default function App() {
   }
   function applyLocation() {
     setPathname(location.pathname);
-    if (location.pathname === "/") { const next = readCatalogUrl(new URL(location.href)); setCatalog(next); setQuery(next.query); }
+    if (isMediaHome(location.pathname)) { const next = readCatalogUrl(new URL(location.href)); setCatalog(next); setQuery(next.query); }
   }
   function navigate(path: string) {
     history.replaceState({ ...history.state, alum4k: true, scroll: window.scrollY }, "", location.href);
@@ -583,7 +584,7 @@ export default function App() {
       {loadError ? <div className="admin-message" role="alert"><span>{loadError}</span><button type="button" onClick={refreshLibrary}>重试</button></div> : null}
       {selected ? <DetailView key={selected.id} item={selected} currentUser={currentUser} relatedItems={relatedItems} onOpenAuth={() => setAuthOpen(true)} onBack={back} onSelectRelated={openFilm} />
         : missing ? <section className="catalog-not-found"><h1>影视不存在</h1><p>该影视不存在或已经删除。</p><button type="button" className="primary-action" onClick={() => handleNav("首页")}><Home size={16} />返回首页</button></section>
-        : loading && pathname !== "/" ? <div className="empty-state">正在读取影视详情…</div>
+        : loading && !isMediaHome(pathname) ? <div className="empty-state">正在读取影视详情…</div>
         : catalog.filters.category === "首页" && !catalog.query ? <LatestHome items={items} loading={loading} onSelect={openFilm} onCategory={handleNav} />
         : <HomeView items={filteredItems} loading={loading} activeNav={catalog.filters.category} activeTab={catalog.filters.sort} setActiveTab={(sort) => setFilters({ ...catalog.filters, sort })}
             page={catalog.page} onPage={setPage}
@@ -597,6 +598,6 @@ export default function App() {
     {currentUser && profileOpen ? <ProfileDialog user={currentUser} onChange={setCurrentUser} onClose={() => setProfileOpen(false)} /> : null}
     {currentUser && requestsOpen ? <RequestsDialog initialTitle={requestTitle} onClose={() => setRequestsOpen(false)} /> : null}
     {boardOpen ? <BoardDialog onClose={() => setBoardOpen(false)} /> : null}
-    {announcement && noticeOpen && pathname === "/" && !authOpen && !profileOpen && !requestsOpen && !boardOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
+    {announcement && noticeOpen && isMediaHome(pathname) && !authOpen && !profileOpen && !requestsOpen && !boardOpen ? <AnnouncementDialog announcement={announcement} onClose={() => { dismissAnnouncement(announcement); setNoticeOpen(false); }} /> : null}
   </div>;
 }

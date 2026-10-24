@@ -19,6 +19,7 @@ import ReportsAdmin from "./ReportsAdmin";
 import type { MediaItem, SiteSettings, User } from "./types";
 import { episodeStatus, getSeasons, mergeSeasons, seasonLabel, seasonStatus, selectedSeasonNumber, type MediaSeason } from "../shared/seasons";
 import { genreTaxonomy, matchesGenre, toggleGenreTag } from "../shared/genres";
+import { mediaBase } from "../shared/paths";
 
 const blank: MediaItem = {
   id: "", mediaType: "movie", title: "", originalTitle: "", category: "电影", categoryMode: "auto",
@@ -279,13 +280,13 @@ export default function AdminPanel({ library, currentUser, onLibraryChange, onLo
 
   return <div className="admin-workspace">
     <aside className="admin-sidebar">
-      <a className="admin-brand" href="/"><BrandMark /><strong>{publishedSettings.branding.name}</strong><small>管理后台</small></a>
+      <a className="admin-brand" href={mediaBase}><BrandMark /><strong>{publishedSettings.branding.name}</strong><small>管理后台</small></a>
       <nav aria-label="后台导航">{sections.map(({ key, label, icon: Icon }) => <button key={key} type="button" className={view === key ? "active" : ""} onClick={() => navigate(key)} disabled={busy}><Icon size={18} />{label}</button>)}</nav>
-      <div className="admin-sidebar-bottom"><a href="/"><ArrowLeft size={16} />返回网站</a><button type="button" onClick={logout}><LogOut size={16} />退出登录</button></div>
+      <div className="admin-sidebar-bottom"><a href={mediaBase}><ArrowLeft size={16} />返回影视站</a><a href="/admin"><ArrowLeft size={16} />工作台管理</a><button type="button" onClick={logout}><LogOut size={16} />退出登录</button></div>
     </aside>
     <main className="admin-main">
       <header className="admin-page-head"><div><span>{publishedSettings.branding.name} / 管理后台</span><h1>{sections.find((section) => section.key === view)?.label}</h1></div>
-        <div className="admin-head-actions"><span className="admin-account"><ShieldCheck size={16} />{currentUser.username}</span><button className="admin-icon-button" type="button" title="刷新数据" disabled={busy} onClick={() => run(async () => { await onLibraryChange(); await loadUsers(); if (!settingsDirty) await loadSiteSettings(); setNotice({ text: "数据已刷新。", error: false }); })}><RefreshCcw size={17} /></button><button className="admin-icon-button" type="button" title="退出登录" disabled={busy} onClick={logout}><LogOut size={17} /></button></div>
+        <div className="admin-head-actions"><a className="admin-icon-button" href="/admin" title="返回工作台管理" aria-label="返回工作台管理"><ArrowLeft size={17} /></a><span className="admin-account"><ShieldCheck size={16} />{currentUser.username}</span><button className="admin-icon-button" type="button" title="刷新数据" disabled={busy} onClick={() => run(async () => { await onLibraryChange(); await loadUsers(); if (!settingsDirty) await loadSiteSettings(); setNotice({ text: "数据已刷新。", error: false }); })}><RefreshCcw size={17} /></button><button className="admin-icon-button" type="button" title="退出登录" disabled={busy} onClick={logout}><LogOut size={17} /></button></div>
       </header>
       <NoticeBoard />
       <div className="admin-summary"><div><strong>{library.length}</strong><span>影视条目</span></div><div><strong>{library.filter((item) => item.resources?.length).length}</strong><span>已有资源</span></div><div><strong>{users.filter((user) => user.role !== "admin").length}</strong><span>注册用户</span></div><div><strong>{users.filter((user) => user.role !== "admin" && user.vip).length}</strong><span>有效 VIP</span></div></div>

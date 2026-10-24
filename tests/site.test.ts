@@ -18,6 +18,7 @@ import { genreTaxonomy, genreOptions, matchesGenre, toggleGenreTag } from "../sh
 import { adminPassword, magnetUrl, panUrl, startTestApi } from "./fixtures";
 import { torrentFixture } from "./torrent-fixture.mjs";
 import { matchCollectorTarget } from "../server/collector-match";
+import { pluginRegistry } from "../shared/workbench";
 
 let api: Awaited<ReturnType<typeof startTestApi>>;
 let adminToken: string;
@@ -37,6 +38,55 @@ before(async () => {
   await request("/api/admin/users/normal_user/vip", "PUT", { vip: false }, adminToken);
 });
 after(async () => { await api?.close(); });
+
+test("workbench is public and its independent admin requires the existing admin account", async () => {
+  const publicData = await request("/api/workbench");
+  assert.equal(publicData.status, 200); assert.equal(publicData.body.settings.name, "Alum 工作台");
+  assert.equal(publicData.body.plugins[0].entry, "/yingshi"); assert.equal(publicData.body.plugins[0].adminEntry, "/yingshi/admin");
+  assert.equal((await request("/api/admin/workbench")).status, 401);
+  assert.equal((await request("/api/admin/workbench", "GET", undefined, userToken)).status, 403);
+  const admin = await request("/api/admin/workbench", "GET", undefined, adminToken);
+  assert.equal(admin.status, 200); assert.equal(admin.body.installed.length, pluginRegistry.length);
+  for (const endpoint of ["/", "/admin", "/yingshi", "/yingshi/admin"]) assert.equal((await fetch(api.base + endpoint)).status, 200);
+  const html = await (await fetch(api.base + "/")).text(); assert.match(html, /Alum 工作台/); assert.match(html, /href="\/yingshi"/); assert.equal(html.includes("验证电影"), false);
+  for (const endpoint of ["/admin", "/yingshi/admin"]) assert.match(await (await fetch(api.base + endpoint)).text(), /noindex, nofollow/);
+});
+
+test("workbench module controls persist, reject invalid settings and cannot change executable routes", async () => {
+  const before = (await request("/api/admin/workbench", "GET", undefined, adminToken)).body;
+  const input = { settings: { name: 'Alum <工作台> "入口"', description: "应用 & 项目" }, plugins: before.plugins.map((plugin: object) => ({ ...plugin, name: "影视模块", order: 5, enabled: false, entry: "javascript:alert(1)", adminEntry: "https://invalid.example" })) };
+  try {
+    assert.equal((await request("/api/admin/workbench", "PUT", input, userToken)).status, 403);
+    assert.equal((await request("/api/admin/workbench", "PUT", input, adminToken)).status, 200);
+    const data = (await request("/api/admin/workbench", "GET", undefined, adminToken)).body;
+    assert.equal(data.installed[0].entry, "/yingshi"); assert.equal(data.installed[0].adminEntry, "/yingshi/admin");
+    assert.equal(data.installed[0].name, "影视模块"); assert.equal(data.installed[0].order, 5);
+    assert.equal((await request("/api/workbench")).body.plugins.length, 0);
+    assert.equal((await fetch(api.base + "/yingshi")).status, 503);
+    assert.equal((await request("/api/media")).status, 503);
+    assert.equal((await request("/api/media", "GET", undefined, adminToken)).status, 200);
+    assert.equal((await fetch(api.base + "/yingshi/admin")).status, 200);
+    const html = await (await fetch(api.base + "/")).text(); assert.match(html, /Alum &lt;工作台&gt; &quot;入口&quot;/); assert.match(html, /应用 &amp; 项目/); assert.equal(html.includes('href="/yingshi"'), false);
+    const map = await (await fetch(api.base + "/sitemap.xml")).text(); assert.equal(map.includes("/yingshi/"), false);
+    for (const patch of [{ plugins: [] }, { plugins: [input.plugins[0], input.plugins[0]] }, { plugins: [{ ...input.plugins[0], id: "uninstalled" }] }, { plugins: [{ ...input.plugins[0], enabled: "yes" }] }, { plugins: [{ ...input.plugins[0], order: -1 }] }, { settings: { name: "", description: "" } }, { settings: { name: "A", description: "x".repeat(241) } }]) assert.equal((await request("/api/admin/workbench", "PUT", { ...input, ...patch }, adminToken)).status, 400);
+    assert.equal((await request("/api/admin/workbench", "GET", undefined, adminToken)).body.settings.name, input.settings.name);
+    const disk = JSON.parse(await readFile(path.join(api.directory, "data/workbench.json"), "utf8"));
+    assert.equal(disk.plugins[0].enabled, false); assert.equal(disk.plugins[0].entry, undefined);
+    const writes = await Promise.all([1, 2, 3].map((order) => request("/api/admin/workbench", "PUT", { ...input, plugins: [{ ...input.plugins[0], order }] }, adminToken)));
+    assert.ok(writes.every((result) => result.status === 200));
+    assert.ok([1, 2, 3].includes(JSON.parse(await readFile(path.join(api.directory, "data/workbench.json"), "utf8")).plugins[0].order));
+  } finally { await request("/api/admin/workbench", "PUT", before, adminToken); }
+  assert.equal((await request("/api/workbench")).body.plugins.length, 1);
+  assert.equal((await fetch(api.base + "/yingshi")).status, 200);
+});
+
+test("legacy media URLs redirect permanently and retain season and query parameters", async () => {
+  for (const url of ["/movie/test-movie", "/tv/example?season=2&source=115"]) {
+    const response = await fetch(api.base + url, { redirect: "manual" });
+    assert.equal(response.status, 301); assert.equal(response.headers.get("location"), "/yingshi" + url);
+  }
+  for (const url of ["/movie/a%2fb", "/movie/a%5cb", "/tv/extra/path"]) assert.equal((await fetch(api.base + url, { redirect: "manual" })).status, 404);
+});
 
 test("latest homepage groups use category and update date, limited to two rows", () => {
   const base = { mediaType: "movie" as const, title: "电影", category: "电影", region: "内地", genres: [] };
@@ -256,9 +306,13 @@ test("site login gate defaults off, persists, protects content and does not bloc
       assert.equal(response.status, 200); assert.match(html, /noindex, nofollow/); assert.match(html, /请登录后访问网站/);
       for (const value of ["验证电影", "影视资料和下载链接验证。", panUrl, magnetUrl]) assert.equal(html.includes(value), false);
     }
-    assert.match(await readFile(path.join(api.directory, "dist/index.html"), "utf8"), /noindex, nofollow/);
-    for (const endpoint of ["/sitemap.xml", "/sitemap-1.xml"]) assert.equal((await fetch(api.base + endpoint)).status, 404);
-    assert.equal(await (await fetch(api.base + "/robots.txt")).text(), "User-agent: *\nDisallow: /\n");
+    const rootHtml = await (await fetch(api.base + "/")).text();
+    assert.match(rootHtml, /Alum 工作台/); assert.match(rootHtml, /content="index, follow"/);
+    for (const endpoint of ["/yingshi/sitemap.xml", "/yingshi/sitemap-1.xml"]) assert.equal((await fetch(api.base + endpoint)).status, 404);
+    const rootMap = await (await fetch(api.base + "/sitemap.xml")).text();
+    assert.match(rootMap, /workbench-sitemap/); assert.equal(rootMap.includes("/yingshi/"), false);
+    const robots = await (await fetch(api.base + "/robots.txt")).text();
+    assert.match(robots, /Disallow: \/yingshi\n/); assert.equal(robots.includes("Disallow: /\n"), false);
     await request("/api/admin/settings", "PUT", { access: { requireLogin: false } }, adminToken);
     assert.equal((await request("/api/media")).status, 200);
     assert.equal((await fetch(api.base + "/sitemap.xml")).status, 200);
@@ -401,6 +455,11 @@ test("Nginx route upgrade is idempotent and preserves TLS, custom ports and redi
   assert.equal((upgraded.match(/# alum4k-public-pages:start/g) ?? []).length, 3);
   assert.ok(upgraded.includes("listen 1023;")); assert.ok(upgraded.includes("listen 443 ssl;")); assert.ok(upgraded.includes("ssl_certificate /etc/letsencrypt/live/alum4k/fullchain.pem;")); assert.ok(upgraded.includes("return 301 https://$host$request_uri;"));
   assert.ok(upgraded.includes("proxy_pass http://127.0.0.1:5188;")); assert.equal(addPublicPageLocations(upgraded, 5174), upgraded);
+  for (const route of ["location = / {", "location = /admin {", "location ^~ /admin/ {", "location = /yingshi {", "location ^~ /yingshi/ {", "location = /workbench-sitemap.xml {"]) assert.ok(upgraded.includes(route));
+  const previous = "server { listen 1023; # alum4k-public-pages:start\nlocation ^~ /movie/ { proxy_pass http://127.0.0.1:5174; }\n# alum4k-public-pages:end\nlocation / { try_files $uri /index.html; } }";
+  assert.ok(addPublicPageLocations(previous).includes("location = /yingshi {"));
+  assert.throws(() => addPublicPageLocations(previous.replace("location / {", "location = /admin { return 200; } location / {")));
+  assert.throws(() => addPublicPageLocations("server { location = / { return 200; } }"));
   assert.ok(upgraded.includes("no-cache, must-revalidate")); assert.ok(upgraded.includes("try_files $uri =404;")); assert.ok(upgraded.includes("gzip_types text/css application/javascript"));
   const custom = 'server { location ^~ "/assets/" { expires 7d; } location = /index.html { expires -1; } gzip off; }';
   const kept = addPublicPageLocations(custom);
@@ -724,7 +783,7 @@ test("bulletins and SEO metadata persist safely in production HTML", async () =>
   assert.equal((await request("/api/admin/settings", "PUT", { seo, bulletins }, adminToken)).status, 200);
   const saved = (await request("/api/settings")).body;
   assert.deepEqual(saved.seo, seo); assert.deepEqual(saved.bulletins, bulletins); assert.deepEqual(saved.branding, before.branding);
-  const html = await readFile(path.join(api.directory, "dist/index.html"), "utf8");
+  const html = await (await fetch(api.base + "/yingshi")).text();
   assert.ok(html.includes("Alum4K &lt;影视&gt; &quot;目录&quot;")); assert.ok(html.includes("115 &amp; 磁力下载资源介绍"));
   assert.ok(html.includes('src="/assets/test.js"')); assert.ok(html.includes('name="description"'));
   assert.equal((await request("/api/admin/settings", "PUT", { bulletins: [{ ...bulletins[0], link: "javascript:alert(1)" }] }, adminToken)).status, 400);
@@ -760,7 +819,7 @@ test("branding persists with legacy announcements and rejects invalid themes or 
   assert.equal((await request("/api/admin/settings", "PUT", { branding }, adminToken)).status, 200);
   const saved = (await request("/api/settings")).body;
   assert.deepEqual(saved.branding, branding); assert.deepEqual(saved.announcement, before.announcement);
-  assert.ok((await readFile(path.join(api.directory, "dist/index.html"), "utf8")).includes(`href="${logo}"`));
+  assert.ok((await (await fetch(api.base + "/yingshi")).text()).includes(`href="${logo}"`));
   for (const patch of [{ theme: "invalid" }, { name: "<script>" }, { logo: "data:image/svg+xml;base64,PHN2Zz4=" }, { logo: "https://attacker.invalid/logo.svg" }, { logo: "data:image/png;base64,SGVsbG8=" }]) {
     assert.equal((await request("/api/admin/settings", "PUT", { branding: { ...branding, ...patch } }, adminToken)).status, 400);
   }
@@ -811,13 +870,13 @@ test("independent detail HTML contains unique SEO and public synopsis but no pri
   const siteUrl = "https://www.alum4k.com";
   await request("/api/admin/settings", "PUT", { seo: { ...settings.seo, siteUrl } }, adminToken);
   const response = await fetch(api.base + "/movie/test-movie"); const html = await response.text();
-  assert.equal(response.status, 200); assert.ok(html.includes("验证电影 (2024)")); assert.ok(html.includes('rel="canonical" href="https://www.alum4k.com/movie/test-movie"'));
+  assert.equal(response.status, 200); assert.ok(html.includes("验证电影 (2024)")); assert.ok(html.includes('rel="canonical" href="https://www.alum4k.com/yingshi/movie/test-movie"'));
   assert.ok(html.includes("影视资料和下载链接验证。")); assert.ok(html.includes("测试演员")); assert.ok(html.includes('/assets/test.js'));
   for (const privateValue of [panUrl, magnetUrl, "abcd", "private.invalid/video", "/private/movie.mp4"]) assert.equal(html.includes(privateValue), false);
   for (const endpoint of ["/movie/missing", "/tv/test-movie", "/movie/test-movie/extra", "/movie/%ZZ"]) assert.equal((await fetch(api.base + endpoint)).status, 404);
   const missing = await (await fetch(api.base + "/movie/missing")).text(); assert.ok(missing.includes("noindex, follow"));
-  const xml = await (await fetch(api.base + "/sitemap.xml")).text(); assert.ok(xml.includes("<sitemapindex")); assert.ok(xml.includes(siteUrl + "/sitemap-1.xml"));
-  const page = await (await fetch(api.base + "/sitemap-1.xml")).text(); assert.ok(page.includes(siteUrl + "/movie/test-movie")); assert.ok(page.includes("<lastmod>")); assert.equal(page.includes(panUrl), false);
+  const xml = await (await fetch(api.base + "/yingshi/sitemap.xml")).text(); assert.ok(xml.includes("<sitemapindex")); assert.ok(xml.includes(siteUrl + "/yingshi/sitemap-1.xml"));
+  const page = await (await fetch(api.base + "/sitemap-1.xml")).text(); assert.ok(page.includes(siteUrl + "/yingshi/movie/test-movie")); assert.ok(page.includes("<lastmod>")); assert.equal(page.includes(panUrl), false);
   assert.equal((await fetch(api.base + "/sitemap-999.xml")).status, 404);
   const robots = await (await fetch(api.base + "/robots.txt")).text(); assert.ok(robots.includes("Disallow: /admin")); assert.ok(robots.includes("Sitemap: " + siteUrl + "/sitemap.xml"));
   assert.equal((await request("/api/admin/settings", "PUT", { seo: { ...settings.seo, siteUrl: "javascript:alert(1)" } }, adminToken)).status, 400);

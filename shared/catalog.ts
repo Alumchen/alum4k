@@ -1,4 +1,5 @@
 import { matchesGenre } from "./genres";
+import { mediaBase } from "./paths";
 
 export interface CatalogItem {
   id: string; mediaType: "movie" | "tv"; title: string; originalTitle?: string; aliases?: string[]; tmdbId?: number;
@@ -53,9 +54,9 @@ export function filterCatalog<T extends CatalogItem>(items: T[], filters: Catalo
   if (filters.sort === "最新上架") next.sort((a, b) => (Date.parse(b.createdAt ?? "") || (b.year ?? 0)) - (Date.parse(a.createdAt ?? "") || (a.year ?? 0)));
   return next;
 }
-export function mediaPath(item: Pick<CatalogItem, "id" | "mediaType">) { return `/${item.mediaType}/${encodeURIComponent(item.id)}`; }
+export function mediaPath(item: Pick<CatalogItem, "id" | "mediaType">) { return `${mediaBase}/${item.mediaType}/${encodeURIComponent(item.id)}`; }
 export function parseDetailPath(pathname: string): { id: string; mediaType: "movie" | "tv" } | null {
-  const match = /^\/(movie|tv)\/([^/]+)\/?$/.exec(pathname);
+  const match = /^\/yingshi\/(movie|tv)\/([^/]+)\/?$/.exec(pathname);
   if (!match) return null;
   try { const id = decodeURIComponent(match[2]); return id && !/[\/\\\x00-\x1f]/.test(id) ? { id, mediaType: match[1] as "movie" | "tv" } : null; } catch { return null; }
 }
@@ -73,5 +74,5 @@ export function catalogPath(filters: CatalogFilters, query: string, page = 1) {
   if (query.trim()) params.set("q", query.trim());
   for (const key of Object.keys(filters) as (keyof CatalogFilters)[]) if (filters[key] !== defaultFilters[key]) params.set(key, filters[key]);
   if (catalogPageNumber(page) > 1) params.set("page", String(catalogPageNumber(page)));
-  return params.size ? `/?${params}` : "/";
+  return params.size ? `${mediaBase}?${params}` : mediaBase;
 }

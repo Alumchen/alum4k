@@ -9,7 +9,7 @@ function expireSession(response: Response, url: string, token: string) {
   }
 }
 
-async function readJson<T>(url: string): Promise<T> {
+export async function readJson<T>(url: string): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(url, {
     headers: token ? { authorization: `Bearer ${token}` } : undefined
@@ -23,7 +23,7 @@ async function readJson<T>(url: string): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function writeJson<T>(url: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
+export async function writeJson<T>(url: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
   const token = getAuthToken();
   const response = await fetch(url, {
     method,

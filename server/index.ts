@@ -18,6 +18,9 @@ import { tmdbImages, imageContentType } from "./tmdb-images";
 import { validTmdbImage } from "../shared/tmdb-images";
 import crypto from "node:crypto";
 import { importCollectorResource } from "./collector";
+import { addWorkbenchRoutes } from "./workbench-routes";
+import { mediaPluginEnabled } from "./workbench";
+import { mediaBase } from "../shared/paths";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
@@ -27,6 +30,18 @@ app.use(express.json({ limit: "10mb" }));
 app.use("/api", (_request, response, next) => {
   response.setHeader("Cache-Control", "no-store");
   next();
+});
+app.use(["/api/media", mediaBase], async (request, response, next) => {
+  try {
+    if (/^\/yingshi\/admin(?:\/|$)/.test(request.originalUrl)) { next(); return; }
+    if (!await mediaPluginEnabled() && (await userFromRequest(request))?.role !== "admin") {
+      response.setHeader("Cache-Control", "no-store");
+      if (request.originalUrl.startsWith(mediaBase)) response.status(503).type("html").send('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>模块暂未启用</title><main style="max-width:600px;margin:15vh auto;padding:24px;font-family:system-ui"><h1>Alum4K 模块暂未启用</h1><a href="/">返回工作台</a></main></html>');
+      else response.status(503).json({ message: "Alum4K 模块暂未启用。" });
+      return;
+    }
+    next();
+  } catch (error) { next(error); }
 });
 
 function limitAttempts(maximum: number) {
@@ -210,22 +225,34 @@ app.put("/api/admin/resource-reports/:id", requireAdmin, async (request, respons
 
 app.get(["/movie/*", "/tv/*"], async (request, response, next) => {
   try {
+    const match = /^\/(movie|tv)\/([^/]+)\/?$/.exec(request.path);
+    if (!match || !decodeURIComponent(match[2]).trim() || /[/\\\x00-\x1f]/.test(decodeURIComponent(match[2]))) { response.status(404).send("Not found"); return; }
+    response.setHeader("Cache-Control", "no-store");
+    response.redirect(301, mediaBase + request.originalUrl);
+  } catch (error) { next(error); }
+});
+app.get([mediaBase, mediaBase + "/", mediaBase + "/admin", mediaBase + "/admin/*", mediaBase + "/movie/*", mediaBase + "/tv/*"], async (request, response, next) => {
+  try {
     const settings = await loadSettings();
     response.setHeader("Cache-Control", "no-store");
+    if (/^\/yingshi\/admin(?:\/|$)/.test(request.path)) { const html = await renderPublicPage(settings, siteOrigin(settings, request)); response.type("html").send(html.replace(/<meta name="robots" content="[^"]*">/, '<meta name="robots" content="noindex, nofollow">')); return; }
+    if (request.path.replace(/\/$/, "") === mediaBase) { response.type("html").send(await renderPublicPage(settings, siteOrigin(settings, request))); return; }
     if (settings.access.requireLogin) { response.type("html").send(await renderPublicPage(settings, siteOrigin(settings, request))); return; }
-    const match = /^\/(movie|tv)\/([^/]+)\/?$/.exec(request.path);
+    const match = /^\/yingshi\/(movie|tv)\/([^/]+)\/?$/.exec(request.path);
     const item = match ? await findMedia(decodeURIComponent(match[2])) : undefined;
     const found = item && item.mediaType === match?.[1];
     response.status(found ? 200 : 404).type("html").send(await renderPublicPage(settings, siteOrigin(settings, request), found ? item : undefined, !found));
   } catch (error) { next(error); }
 });
-app.get(["/sitemap.xml", "/sitemap-:page.xml"], async (request, response, next) => {
+addWorkbenchRoutes(app);
+app.get("/sitemap-:page.xml", (request, response) => { response.redirect(301, `${mediaBase}/sitemap-${encodeURIComponent(request.params.page)}.xml`); });
+app.get([mediaBase + "/sitemap.xml", mediaBase + "/sitemap-:page.xml"], async (request, response, next) => {
   try {
     const settings = await loadSettings();
     response.setHeader("Cache-Control", "no-store");
     if (settings.access.requireLogin) { response.status(404).send("Sitemap not available"); return; }
     const items = await loadLibrary(); const origin = siteOrigin(settings, request);
-    const content = request.path === "/sitemap.xml" ? renderSitemapIndex(origin, items.length) : renderSitemap(origin, items, Number(request.params.page));
+    const content = request.path === mediaBase + "/sitemap.xml" ? renderSitemapIndex(origin, items.length) : renderSitemap(origin, items, Number(request.params.page));
     response.setHeader("Cache-Control", "no-store"); if (!content) { response.status(404).send("Sitemap not found"); return; }
     response.type("application/xml").send(content);
   } catch (error) { next(error); }
@@ -233,7 +260,7 @@ app.get(["/sitemap.xml", "/sitemap-:page.xml"], async (request, response, next) 
 app.get("/robots.txt", async (request, response, next) => {
   try {
     const settings = await loadSettings(); response.setHeader("Cache-Control", "no-store");
-    response.type("text/plain").send(settings.access.requireLogin ? "User-agent: *\nDisallow: /\n" : `User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /api/\nSitemap: ${siteOrigin(settings, request)}/sitemap.xml\n`);
+    response.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /yingshi/admin\nDisallow: /api/\n${settings.access.requireLogin || !await mediaPluginEnabled() ? "Disallow: /yingshi\n" : ""}Sitemap: ${siteOrigin(settings, request)}/sitemap.xml\n`);
   } catch (error) { next(error); }
 });
 
