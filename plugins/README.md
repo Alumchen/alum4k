@@ -2,6 +2,8 @@
 
 当前是源码内置插件注册机制，不是第三方插件市场。Alum4K 的业务实现暂时仍保留在原 `src`、`server` 文件中，本次不搬迁媒体库与账号数据，也不声称已经生成可独立安装的插件包。
 
+AlumWindows 清单位于 `plugins/alumwindows/manifest.ts`；前台 `src/WindowsApp.tsx`、后台 `src/WindowsAdmin.tsx`、服务端 `server/windows*.ts`，路由固定为 `/windows` 与 `/windows/admin`。初始公开资源快照随插件源码发布，后续运行数据独立保存在 `data/windows/`。管理员登录沿用统一账号，不注册新默认密码。
+
 ## 清单与配置
 
 每个模块在 `plugins/<id>/manifest.ts` 声明 `schemaVersion`、`id`、`version`、名称、说明、分类、前台入口、后台入口、图标和 Logo，并满足 `shared/plugins.ts` 的类型。通过 `shared/workbench.ts` 的 `pluginRegistry` 注册。

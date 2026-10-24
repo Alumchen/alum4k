@@ -17,4 +17,5 @@ data/cache/
 data/115-collector/
 data/workbench.json
 data/dashboards/
+data/windows/
 **/site-session.json

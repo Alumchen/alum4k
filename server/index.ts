@@ -21,6 +21,7 @@ import { importCollectorResource } from "./collector";
 import { addWorkbenchRoutes } from "./workbench-routes";
 import { mediaPluginEnabled } from "./workbench";
 import { mediaBase } from "../shared/paths";
+import { addWindowsRoutes } from "./windows-routes";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? 5174);
@@ -244,6 +245,7 @@ app.get([mediaBase, mediaBase + "/", mediaBase + "/admin", mediaBase + "/admin/*
     response.status(found ? 200 : 404).type("html").send(await renderPublicPage(settings, siteOrigin(settings, request), found ? item : undefined, !found));
   } catch (error) { next(error); }
 });
+addWindowsRoutes(app);
 addWorkbenchRoutes(app);
 app.get("/sitemap-:page.xml", (request, response) => { response.redirect(301, `${mediaBase}/sitemap-${encodeURIComponent(request.params.page)}.xml`); });
 app.get([mediaBase + "/sitemap.xml", mediaBase + "/sitemap-:page.xml"], async (request, response, next) => {
@@ -260,7 +262,7 @@ app.get([mediaBase + "/sitemap.xml", mediaBase + "/sitemap-:page.xml"], async (r
 app.get("/robots.txt", async (request, response, next) => {
   try {
     const settings = await loadSettings(); response.setHeader("Cache-Control", "no-store");
-    response.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /yingshi/admin\nDisallow: /api/\n${settings.access.requireLogin || !await mediaPluginEnabled() ? "Disallow: /yingshi\n" : ""}Sitemap: ${siteOrigin(settings, request)}/sitemap.xml\n`);
+    response.type("text/plain").send(`User-agent: *\nAllow: /\nDisallow: /admin\nDisallow: /yingshi/admin\nDisallow: /windows/admin\nDisallow: /api/\n${settings.access.requireLogin || !await mediaPluginEnabled() ? "Disallow: /yingshi\n" : ""}Sitemap: ${siteOrigin(settings, request)}/sitemap.xml\n`);
   } catch (error) { next(error); }
 });
 

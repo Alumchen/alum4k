@@ -180,6 +180,7 @@ ${SUDO} systemctl reload nginx
 echo "Alum workbench and Alum4K deployed."
 echo "Workbench: / | Workbench admin: /admin"
 echo "Alum4K: /yingshi | Alum4K admin: /yingshi/admin"
+echo "AlumWindows: /windows | AlumWindows admin: /windows/admin"
 echo "Configured listeners:"
 ${SUDO} awk '/^[[:space:]]*(listen|server_name)[[:space:]]/ {print "  " $0}' "${NGINX_AVAILABLE}"
 echo "API health: http://127.0.0.1:${API_PORT}/api/health"

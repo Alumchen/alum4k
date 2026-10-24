@@ -1,8 +1,9 @@
 import alum4k from "../plugins/alum4k/manifest";
+import alumwindows from "../plugins/alumwindows/manifest";
 import type { InstalledPlugin, PluginPreferences } from "./plugins";
 
 // Route and code ownership stay in the checked-in manifest, never in editable settings.
-export const pluginRegistry = [alum4k];
+export const pluginRegistry = [alum4k, alumwindows];
 export interface WorkbenchSettings { name: string; description: string; }
 export interface WorkbenchStore { settings: WorkbenchSettings; plugins: PluginPreferences[]; }
 export interface WorkbenchData { settings: WorkbenchSettings; plugins: InstalledPlugin[]; }

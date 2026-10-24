@@ -7,8 +7,10 @@ import { isMediaArea } from "../shared/paths";
 const path = window.location.pathname;
 const workbenchAdmin = path === "/admin" || path.startsWith("/admin/");
 const media = isMediaArea(path);
-const Page = React.lazy(() => workbenchAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? import("./AdminApp") : media ? import("./App") : import("./WorkbenchApp"));
-const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : {})} /></React.Suspense>;
+const windows = path === "/windows" || path.startsWith("/windows/");
+const windowsAdmin = /^\/windows\/admin(?:\/|$)/.test(path);
+const Page = React.lazy(() => workbenchAdmin || windowsAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? import("./AdminApp") : media ? import("./App") : windows ? import("./WindowsApp") : import("./WorkbenchApp"));
+const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : windowsAdmin ? { scope: "windows" as const } : {})} /></React.Suspense>;
 
 class PageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -20,6 +22,6 @@ class PageBoundary extends React.Component<{ children: React.ReactNode }, { fail
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PageBoundary>{media || workbenchAdmin ? <SiteProvider>{content}</SiteProvider> : content}</PageBoundary>
+    <PageBoundary>{media || workbenchAdmin || windowsAdmin ? <SiteProvider>{content}</SiteProvider> : content}</PageBoundary>
   </React.StrictMode>
 );

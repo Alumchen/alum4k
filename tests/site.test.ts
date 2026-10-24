@@ -98,11 +98,11 @@ test("workbench module controls persist, reject invalid settings and cannot chan
     assert.equal((await request("/api/admin/workbench", "GET", undefined, adminToken)).body.settings.name, input.settings.name);
     const disk = JSON.parse(await readFile(path.join(api.directory, "data/workbench.json"), "utf8"));
     assert.equal(disk.plugins[0].enabled, false); assert.equal(disk.plugins[0].entry, undefined);
-    const writes = await Promise.all([1, 2, 3].map((order) => request("/api/admin/workbench", "PUT", { ...input, plugins: [{ ...input.plugins[0], order }] }, adminToken)));
+    const writes = await Promise.all([1, 2, 3].map((order) => request("/api/admin/workbench", "PUT", { ...input, plugins: input.plugins.map((plugin: object) => ({ ...plugin, order })) }, adminToken)));
     assert.ok(writes.every((result) => result.status === 200));
     assert.ok([1, 2, 3].includes(JSON.parse(await readFile(path.join(api.directory, "data/workbench.json"), "utf8")).plugins[0].order));
   } finally { await request("/api/admin/workbench", "PUT", before, adminToken); }
-  assert.equal((await request("/api/workbench")).body.plugins.length, 1);
+  assert.equal((await request("/api/workbench")).body.plugins.length, 2);
   assert.equal((await fetch(api.base + "/yingshi")).status, 200);
 });
 
@@ -481,7 +481,7 @@ test("Nginx route upgrade is idempotent and preserves TLS, custom ports and redi
   assert.equal((upgraded.match(/# alum4k-public-pages:start/g) ?? []).length, 3);
   assert.ok(upgraded.includes("listen 1023;")); assert.ok(upgraded.includes("listen 443 ssl;")); assert.ok(upgraded.includes("ssl_certificate /etc/letsencrypt/live/alum4k/fullchain.pem;")); assert.ok(upgraded.includes("return 301 https://$host$request_uri;"));
   assert.ok(upgraded.includes("proxy_pass http://127.0.0.1:5188;")); assert.equal(addPublicPageLocations(upgraded, 5174), upgraded);
-  for (const route of ["location = / {", "location = /admin {", "location ^~ /admin/ {", "location = /yingshi {", "location ^~ /yingshi/ {", "location = /workbench-sitemap.xml {"]) assert.ok(upgraded.includes(route));
+  for (const route of ["location = / {", "location = /admin {", "location ^~ /admin/ {", "location = /yingshi {", "location ^~ /yingshi/ {", "location = /windows {", "location ^~ /windows/ {", "location = /workbench-sitemap.xml {"]) assert.ok(upgraded.includes(route));
   const previous = "server { listen 1023; # alum4k-public-pages:start\nlocation ^~ /movie/ { proxy_pass http://127.0.0.1:5174; }\n# alum4k-public-pages:end\nlocation / { try_files $uri /index.html; } }";
   assert.ok(addPublicPageLocations(previous).includes("location = /yingshi {"));
   assert.throws(() => addPublicPageLocations(previous.replace("location / {", "location = /admin { return 200; } location / {")));

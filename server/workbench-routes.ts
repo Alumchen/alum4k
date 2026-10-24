@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { requireAdmin, requireAuth, type AuthenticatedRequest } from "./auth";
 import { loadDashboard, saveDashboard, DashboardConflict } from "./dashboard";
 import { installedPlugins } from "../shared/workbench";
-import { loadWorkbench, saveWorkbench, mediaPluginEnabled } from "./workbench";
+import { loadWorkbench, saveWorkbench, mediaPluginEnabled, pluginEnabled } from "./workbench";
 import { loadSettings } from "./settings";
 import { renderWorkbenchPage } from "./workbench-pages";
 import { siteOrigin, escapeHtml } from "./seo";
@@ -21,5 +21,5 @@ export function addWorkbenchRoutes(app: Express) {
       response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>${escapeHtml(origin)}/workbench-sitemap.xml</loc></sitemap>${settings.access.requireLogin || !await mediaPluginEnabled() ? "" : `<sitemap><loc>${escapeHtml(origin)}/yingshi/sitemap.xml</loc></sitemap>`}</sitemapindex>`);
     } catch (error) { next(error); }
   });
-  app.get("/workbench-sitemap.xml", async (request, response, next) => { try { const origin = siteOrigin(await loadSettings(), request); response.setHeader("Cache-Control", "no-store"); response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${escapeHtml(origin)}/</loc></url></urlset>`); } catch (error) { next(error); } });
+  app.get("/workbench-sitemap.xml", async (request, response, next) => { try { const origin = siteOrigin(await loadSettings(), request); response.setHeader("Cache-Control", "no-store"); response.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>${escapeHtml(origin)}/</loc></url>${await pluginEnabled("alumwindows") ? `<url><loc>${escapeHtml(origin)}/windows</loc></url><url><loc>${escapeHtml(origin)}/windows/faq</loc></url>` : ""}</urlset>`); } catch (error) { next(error); } });
 }

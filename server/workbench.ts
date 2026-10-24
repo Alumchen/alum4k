@@ -38,3 +38,4 @@ export function saveWorkbench(input: WorkbenchStore) {
   }); pending = next.catch(() => undefined); return next;
 }
 export async function mediaPluginEnabled() { return installedPlugins(await loadWorkbench()).some((plugin) => plugin.id === "alum4k" && plugin.enabled); }
+export async function pluginEnabled(id: string) { return installedPlugins(await loadWorkbench()).some((plugin) => plugin.id === id && plugin.enabled); }
