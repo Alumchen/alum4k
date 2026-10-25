@@ -18,7 +18,7 @@ export async function freePort() {
   return port;
 }
 
-export async function startTestApi() {
+export async function startTestApi(environment: Record<string, string> = {}) {
   const directory = await mkdtemp(path.join(tmpdir(), "alum4k-test-"));
   await mkdir(path.join(directory, "data"));
   await mkdir(path.join(directory, "dist"));
@@ -45,7 +45,7 @@ export async function startTestApi() {
   const port = await freePort();
   const child = spawn(process.execPath, ["--import", pathToFileURL(path.join(projectRoot, "node_modules/tsx/dist/loader.mjs")).href, path.join(projectRoot, "server/index.ts")], {
     cwd: directory,
-    env: { ...process.env, API_PORT: String(port), ADMIN_PASSWORD: adminPassword, AUTH_SECRET: "isolated-test-secret", TMDB_BEARER_TOKEN: "", TMDB_API_KEY: "", ALIST_BASE_URL: "", ALIST_TOKEN: "" },
+    env: { ...process.env, API_PORT: String(port), ADMIN_PASSWORD: adminPassword, AUTH_SECRET: "isolated-test-secret", TMDB_BEARER_TOKEN: "", TMDB_API_KEY: "", ALIST_BASE_URL: "", ALIST_TOKEN: "", AI_RUNTIME_TOKEN: "", AI_RUNTIME_URL: "", ...environment },
     windowsHide: true, stdio: ["ignore", "pipe", "pipe"]
   });
   let logs = "";

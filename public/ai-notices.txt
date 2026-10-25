@@ -1,0 +1,11 @@
+AlumAI third-party software notices
+
+noVNC 1.5.0 is licensed under the Mozilla Public License 2.0.
+Unmodified source and license: https://github.com/novnc/noVNC/tree/v1.5.0
+License text: https://www.mozilla.org/MPL/2.0/
+
+http-proxy is licensed under the MIT License.
+Source and copyright/license notices: https://github.com/http-party/node-http-proxy
+
+The remote browser image is derived from SeleniumHQ/docker-selenium and contains Chromium and other open-source software with their respective licenses.
+https://github.com/SeleniumHQ/docker-selenium

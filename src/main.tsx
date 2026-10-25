@@ -11,14 +11,17 @@ const windows = path === "/windows" || path.startsWith("/windows/");
 const windowsAdmin = /^\/windows\/admin(?:\/|$)/.test(path);
 const chips = path === "/xinsj" || path.startsWith("/xinsj/");
 const chipsAdmin = /^\/xinsj\/admin(?:\/|$)/.test(path);
+const ai = path === "/ai" || path.startsWith("/ai/");
+const aiAdmin = /^\/ai\/admin(?:\/|$)/.test(path);
 // Separate lazy boundaries prevent bundling from merging page-specific CSS dependencies.
 const AdminPage = React.lazy(() => import("./AdminApp"));
 const MediaPage = React.lazy(() => import("./App"));
 const WindowsPage = React.lazy(() => import("./WindowsApp"));
 const WorkbenchPage = React.lazy(() => import("./WorkbenchApp"));
 const ChipPage = React.lazy(() => import("./ChipApp"));
-const Page = workbenchAdmin || windowsAdmin || chipsAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? AdminPage : media ? MediaPage : windows ? WindowsPage : chips ? ChipPage : WorkbenchPage;
-const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : windowsAdmin ? { scope: "windows" as const } : chipsAdmin ? { scope: "chips" as const } : {})} /></React.Suspense>;
+const AiPage = React.lazy(() => import("./AiApp"));
+const Page = workbenchAdmin || windowsAdmin || chipsAdmin || aiAdmin || /^\/yingshi\/admin(?:\/|$)/.test(path) ? AdminPage : media ? MediaPage : windows ? WindowsPage : chips ? ChipPage : ai ? AiPage : WorkbenchPage;
+const content = <React.Suspense fallback={<div className="admin-gate">正在加载…</div>}><Page {...(workbenchAdmin ? { scope: "workbench" as const } : windowsAdmin ? { scope: "windows" as const } : chipsAdmin ? { scope: "chips" as const } : aiAdmin ? { scope: "ai" as const } : {})} /></React.Suspense>;
 
 class PageBoundary extends React.Component<{ children: React.ReactNode }, { failed: boolean }> {
   state = { failed: false };
@@ -30,6 +33,6 @@ class PageBoundary extends React.Component<{ children: React.ReactNode }, { fail
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PageBoundary>{media || workbenchAdmin || windowsAdmin || chipsAdmin ? <SiteProvider>{content}</SiteProvider> : content}</PageBoundary>
+    <PageBoundary>{media || workbenchAdmin || windowsAdmin || chipsAdmin || aiAdmin ? <SiteProvider>{content}</SiteProvider> : content}</PageBoundary>
   </React.StrictMode>
 );

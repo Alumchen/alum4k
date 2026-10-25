@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .env
+.env.*.tmp
 .DS_Store
 npm-debug.log*
 *.log
@@ -19,4 +20,5 @@ data/workbench.json
 data/dashboards/
 data/windows/
 data/xinsj/
+data/ai/
 **/site-session.json

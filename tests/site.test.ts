@@ -102,7 +102,7 @@ test("workbench module controls persist, reject invalid settings and cannot chan
     assert.ok(writes.every((result) => result.status === 200));
     assert.ok([1, 2, 3].includes(JSON.parse(await readFile(path.join(api.directory, "data/workbench.json"), "utf8")).plugins[0].order));
   } finally { await request("/api/admin/workbench", "PUT", before, adminToken); }
-  assert.equal((await request("/api/workbench")).body.plugins.length, 3);
+  assert.equal((await request("/api/workbench")).body.plugins.length, 4);
   assert.equal((await fetch(api.base + "/yingshi")).status, 200);
 });
 

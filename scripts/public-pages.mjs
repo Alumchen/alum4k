@@ -44,8 +44,8 @@ export function addPublicPageLocations(source, defaultPort = 5174) {
   const api = proxies.find((value) => /^http:\/\/(127\.0\.0\.1|localhost):\d+\/api\/?$/.test(value));
   const port = api ? Number(new URL(api).port || 80) : Number(defaultPort);
   if (port < 1 || port > 65535) throw new Error("Invalid existing API proxy port.");
-  const paths = ["= /", "= /admin", "^~ /admin/", "= /yingshi", "^~ /yingshi/", "= /windows", "^~ /windows/", "= /xinsj", "^~ /xinsj/", "^~ /movie/", "^~ /tv/", "= /sitemap.xml", "= /workbench-sitemap.xml", '~ "^/sitemap-[0-9]+[.]xml$"', "= /robots.txt"];
-  const locations = paths.map((path) => `    location ${path} {\n        proxy_pass http://127.0.0.1:${port};\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_intercept_errors off;\n    }`).join("\n");
+  const paths = ["= /", "= /admin", "^~ /admin/", "= /yingshi", "^~ /yingshi/", "= /windows", "^~ /windows/", "= /xinsj", "^~ /xinsj/", "= /ai", "^~ /ai/", "^~ /ai/remote/", "^~ /api/ai/", "^~ /movie/", "^~ /tv/", "= /sitemap.xml", "= /workbench-sitemap.xml", '~ "^/sitemap-[0-9]+[.]xml$"', "= /robots.txt"];
+  const locations = paths.map((path) => `    location ${path} {\n        proxy_pass http://127.0.0.1:${port};\n        proxy_set_header Host ${path.includes("/ai") ? "$http_host" : "$host"};\n        proxy_set_header X-Real-IP $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_intercept_errors off;${path.includes("/ai") ? "\n        proxy_http_version 1.1;\n        proxy_read_timeout 3600s;\n        proxy_send_timeout 180s;\n        proxy_buffering off;" : ""}${path === "^~ /ai/remote/" ? "\n        proxy_set_header Upgrade $http_upgrade;\n        proxy_set_header Connection \"upgrade\";" : ""}\n    }`).join("\n");
   let next = source;
   for (const server of servers.sort((a, b) => b.open - a.open)) {
     const body = source.slice(server.open, server.close); const existing = body.indexOf(marker);
@@ -54,7 +54,7 @@ export function addPublicPageLocations(source, defaultPort = 5174) {
     const custom = existing >= 0 ? body.slice(0, existing) + body.slice(end + endMarker.length) : body;
     const customTokens = tokens(custom);
     const hasLocation = (value) => customTokens.some((token, index) => token.value === "location" && (customTokens[index + 1]?.value === value || customTokens[index + 2]?.value === value));
-    const conflicts = ["/admin", "/admin/", "/yingshi", "/yingshi/", "/windows", "/windows/", "/xinsj", "/xinsj/", "/movie/", "/tv/", "/sitemap.xml", "/workbench-sitemap.xml", "/robots.txt"];
+    const conflicts = ["/admin", "/admin/", "/yingshi", "/yingshi/", "/windows", "/windows/", "/xinsj", "/xinsj/", "/ai", "/ai/", "/ai/remote/", "/api/ai/", "/movie/", "/tv/", "/sitemap.xml", "/workbench-sitemap.xml", "/robots.txt"];
     if (conflicts.some(hasLocation) || customTokens.some((token, index) => token.value === "location" && customTokens[index + 1]?.value === "=" && customTokens[index + 2]?.value === "/")) throw new Error("Existing custom public-page locations found; merge them manually before updating.");
     const assets = hasLocation("/assets/") ? "" : `\n    location ^~ /assets/ {\n        try_files $uri =404;\n        add_header Cache-Control "public, max-age=31536000, immutable";\n        add_header X-Content-Type-Options nosniff always;\n    }`;
     const entry = hasLocation("/index.html") ? "" : `\n    location = /index.html {\n        add_header Cache-Control "no-cache, must-revalidate" always;\n    }`;

@@ -6,19 +6,25 @@ import express from "express";
 import { chromium, type Page } from "playwright";
 import { startTestApi, projectRoot, adminPassword } from "./fixtures";
 import { publishBuild } from "../scripts/publish-build.mjs";
+import httpProxy from "http-proxy";
+import { startAiFixture } from "./ai-fixtures";
 
-const api = await startTestApi();
+const aiFixture = await startAiFixture();
+const api = await startTestApi(aiFixture.environment);
 const output = path.join(projectRoot, "artifacts/ui");
 let browser: Awaited<ReturnType<typeof chromium.launch>> | undefined;
 const app = express();
 app.use("/assets", express.static(path.join(api.directory, "dist/assets"), { fallthrough: false }));
-app.get(["/windows.svg", "/brand.svg", "/xinsj.svg", "/xinsj-banner.jpg"], (request, response) => response.sendFile(path.join(api.directory, "dist", path.basename(request.path))));
+app.get(["/windows.svg", "/brand.svg", "/xinsj.svg", "/xinsj-banner.jpg", "/ai.svg"], (request, response) => response.sendFile(path.join(api.directory, "dist", path.basename(request.path))));
 app.use((request, response) => {
   const upstream = httpRequest(new URL(request.originalUrl, api.base), { method: request.method, headers: request.headers }, (result) => { response.writeHead(result.statusCode || 502, result.headers); result.pipe(response); });
   upstream.on("error", () => { if (!response.headersSent) response.status(502).end("Test API unavailable"); else response.destroy(); });
   request.pipe(upstream);
 });
 const server = createServer(app); const errors: string[] = []; const requests: string[] = [];
+const desktopProxy = httpProxy.createProxyServer({ target: api.base, ws: true, changeOrigin: false });
+desktopProxy.on("error", (_error, _request, socket) => { if ("destroy" in socket) socket.destroy(); });
+server.on("upgrade", (request, socket, head) => desktopProxy.ws(request, socket, head));
 async function check(page: Page, name: string) {
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `${name} overflows`);
   await page.screenshot({ path: path.join(output, name), fullPage: false });
@@ -66,9 +72,21 @@ try {
   await page.goto(origin + "/xinsj/admin"); await page.getByRole("heading", { name: "帖子管理", exact: true }).waitFor();
   assert.equal(await page.locator(".chip-admin-sidebar .chip-brand img").evaluate((image) => image.getBoundingClientRect().width), 34);
   await check(page, "production-xinsj-admin.png");
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto(origin + "/ai"); await page.getByRole("heading", { name: "ChatGPT", exact: true }).waitFor();
+  assert.equal(await page.locator(".ai-app").evaluate((element) => getComputedStyle(element).display), "grid");
+  assert.ok(requests.some((url) => /\/ai-[^/]+\.css$/.test(url)));
+  await page.getByRole("button", { name: "打开远程浏览器", exact: true }).click();
+  await page.getByRole("status").filter({ hasText: "已连接" }).waitFor();
+  await page.waitForFunction(() => { const canvas = document.querySelector<HTMLCanvasElement>(".ai-remote-surface canvas"); return !!canvas && canvas.width > 100 && canvas.getContext("2d")!.getImageData(50,50,1,1).data[3] > 0; });
+  await check(page, "production-ai-test-desktop.png");
+  await page.setViewportSize({ width: 390, height: 844 }); await check(page, "production-ai-test-mobile.png");
+  await page.getByRole("button", { name: "关闭远程浏览器", exact: true }).click();
+  await page.goto(origin + "/ai/admin"); await page.getByRole("heading", { name: "AI工具管理", exact: true }).waitFor();
+  await check(page, "production-ai-admin.png");
   assert.deepEqual(errors, []);
   console.log("Production UI passed: hashed CSS, images and computed styles for Windows, workbench, media and semiconductor community/admin; cold load, refresh and desktop/mobile layouts.");
 } catch (error) {
   const page = browser?.contexts()[0]?.pages()[0]; if (page) await page.screenshot({ path: path.join(output, "production-failure.png"), fullPage: false });
   throw error;
-} finally { await browser?.close(); await new Promise<void>((resolve) => server.close(() => resolve())); await api.close(); }
+} finally { await browser?.close(); desktopProxy.close(); await new Promise<void>((resolve) => server.close(() => resolve())); await api.close(); await aiFixture.close(); }

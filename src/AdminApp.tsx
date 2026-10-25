@@ -9,8 +9,9 @@ import { defaultWorkbench } from "../shared/workbench";
 import { mediaBase } from "../shared/paths";
 import WindowsAdmin from "./WindowsAdmin";
 import ChipAdmin from "./ChipAdmin";
+import AiAdmin from "./AiAdmin";
 
-export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "media" | "windows" | "chips" }) {
+export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "media" | "windows" | "chips" | "ai" }) {
   const { settings } = useSite();
   const [user, setUser] = useState<User | null>(null);
   const [library, setLibrary] = useState<MediaItem[]>([]);
@@ -21,9 +22,9 @@ export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "m
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [workbenchName, setWorkbenchName] = useState(defaultWorkbench.settings.name);
-  const appName = scope === "chips" ? "Alum芯世界" : scope === "windows" ? "AlumWindows" : scope === "workbench" ? workbenchName : settings.branding.name;
-  const appEntry = scope === "chips" ? "/xinsj" : scope === "windows" ? "/windows" : scope === "workbench" ? "/" : mediaBase;
-  const appLogo = scope === "chips" ? "/xinsj.svg" : scope === "windows" ? "/windows.svg" : "/brand.svg";
+  const appName = scope === "ai" ? "AlumAI" : scope === "chips" ? "Alum芯世界" : scope === "windows" ? "AlumWindows" : scope === "workbench" ? workbenchName : settings.branding.name;
+  const appEntry = scope === "ai" ? "/ai" : scope === "chips" ? "/xinsj" : scope === "windows" ? "/windows" : scope === "workbench" ? "/" : mediaBase;
+  const appLogo = scope === "ai" ? "/ai.svg" : scope === "chips" ? "/xinsj.svg" : scope === "windows" ? "/windows.svg" : "/brand.svg";
   useEffect(() => { if (scope === "workbench") { fetch("/api/workbench").then((response) => response.json()).then((data) => setWorkbenchName(data.settings.name)).catch(() => undefined); } }, [scope]);
   useEffect(() => {
     if (scope === "media") return;
@@ -65,6 +66,7 @@ export default function AdminApp({ scope = "media" }: { scope?: "workbench" | "m
     if (scope === "workbench") return <WorkbenchAdmin onLogout={logout} />;
     if (scope === "windows") return <WindowsAdmin onLogout={logout} />;
     if (scope === "chips") return <ChipAdmin onLogout={logout} />;
+    if (scope === "ai") return <AiAdmin onLogout={logout} />;
     if (!ready) return <div className="admin-gate"><Loader2 className="spin" size={26} /><span>{message || "正在读取媒体库…"}</span>{message ? <button type="button" onClick={() => refreshLibrary().then(() => { setReady(true); setMessage(""); }).catch((error) => setMessage(error.message))}>重试</button> : null}</div>;
     return <AdminPanel library={library} currentUser={user} onLibraryChange={refreshLibrary} onLogout={logout} />;
   }

@@ -6,6 +6,8 @@ AlumWindows 清单位于 `plugins/alumwindows/manifest.ts`；前台 `src/Windows
 
 ## 清单与配置
 
+AlumAI 清单位于 `plugins/alumai/manifest.ts`，入口 `/ai` 和 `/ai/admin`。工具及授权设置在 `data/ai/`，远程浏览器登录资料在私有Docker卷中。它是个人远程浏览器而非AI API代理，需要单独安装运行组件；部署和安全边界见 `plugins/alumai/README.md`。
+
 每个模块在 `plugins/<id>/manifest.ts` 声明 `schemaVersion`、`id`、`version`、名称、说明、分类、前台入口、后台入口、图标和 Logo，并满足 `shared/plugins.ts` 的类型。通过 `shared/workbench.ts` 的 `pluginRegistry` 注册。
 
 路由、版本和 Logo 来自受版本控制的清单。管理员仅能改名称、说明、排序及启用状态，不能让配置文件注入路由或执行代码。新增模块需要明确接入前端懒加载路由、服务端路由、权限检查和 Nginx 规则，并添加测试，而不是只增加一张不能打开的入口卡片。

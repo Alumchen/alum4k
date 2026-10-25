@@ -1,0 +1,10 @@
+{
+  "download": {
+    "default_directory": "/home/seluser/.alumai/downloads",
+    "prompt_for_download": false
+  },
+  "credentials_enable_service": false,
+  "profile": {
+    "password_manager_enabled": false
+  }
+}
