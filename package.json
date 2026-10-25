@@ -21,6 +21,7 @@
     "test:xinsj": "node --import tsx tests/xinsj-ui.ts",
     "test:ai": "node --import tsx tests/ai-ui.ts",
     "test:ai-relay": "node --import tsx tests/ai-relay-ui.ts",
+    "test:ai-adapter": "node --import tsx tests/ai-adapter-ui.ts",
     "test:production": "npm run build && node --import tsx tests/production-ui.ts",
     "preview": "vite preview --host 0.0.0.0",
     "serve:api": "tsx server/index.ts",

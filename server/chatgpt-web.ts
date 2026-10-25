@@ -1,22 +1,45 @@
 import type { Page, Locator } from "playwright";
 
 export class WebRelayError extends Error { constructor(public code: string, message: string) { super(message); } }
-const editorSelector = '#prompt-textarea';
+const editorSelector = 'textarea#prompt-textarea,#prompt-textarea[contenteditable="true"],#prompt-textarea [contenteditable="true"],textarea[data-testid="prompt-textarea"],[data-testid="prompt-textarea"][contenteditable="true"],textarea[data-testid="composer-input"],[data-testid="composer-input"][contenteditable="true"]';
+const profileSelector = '[data-testid="accounts-profile-button"],[data-testid="profile-button"],[data-testid="profile-menu-button"],button[aria-label="Open profile menu"],button[aria-label="打开个人资料菜单"],button[aria-label="Open user menu"],button[aria-label="打开用户菜单"]';
 const sendSelector = 'button[data-testid="send-button"],button[aria-label="Send prompt"],button[aria-label="发送提示"]';
 const stopSelector = 'button[data-testid="stop-button"],button[aria-label="Stop streaming"],button[aria-label="停止流式传输"]';
 const assistantSelector = '[data-message-author-role="assistant"]';
 const userSelector = '[data-message-author-role="user"]';
 export function conversationUrl(value: string) { try { const url = new URL(value); return url.origin === "https://chatgpt.com" && /^\/c\/[a-zA-Z0-9-]{1,100}$/.test(url.pathname) ? url.origin + url.pathname : ""; } catch { return ""; } }
-async function visible(locator: Locator) { return locator.first().isVisible().catch(() => false); }
-export async function inspectChatGpt(page: Page): Promise<{ ready: boolean; code: string; message: string }> {
-  const fail = (code: string, message: string) => ({ ready: false, code, message });
+function shown(locator: Locator) { return locator.filter({ visible: true }); }
+function editors(page: Page) { return shown(page.locator(editorSelector)); }
+function sendButton(page: Page) { return shown(page.locator(sendSelector)).first(); }
+async function visible(locator: Locator) { return shown(locator).first().isVisible().catch(() => false); }
+export interface ChatGptState { ready: boolean; code: string; message: string; diagnostics?: { editorCount: number; accountMarker: boolean; accountVisible: boolean; documentReady: string }; }
+export async function inspectChatGpt(page: Page): Promise<ChatGptState> {
+  const fail = (code: string, message: string): ChatGptState => ({ ready: false, code, message });
   if (!page.url().startsWith("https://chatgpt.com/")) return fail("LOGIN_REQUIRED", "请本人完成 ChatGPT 网页登录。");
   if (await visible(page.locator('iframe[src*="challenges.cloudflare.com"],iframe[title*="challenge"],iframe[title*="验证码"]')) || await visible(page.getByText(/verify you are human|checking your browser|验证您是真人|确认您是真人/i))) return fail("VERIFY_REQUIRED", "网站要求本人完成验证，程序已暂停。");
   if (await visible(page.getByRole("alert").filter({ hasText: /limit|too many|限制|上限|频繁/i }))) return fail("WEBSITE_LIMITED", "网页提示使用限制，请稍后自行重试。");
   if (await visible(page.locator('[data-testid="login-button"],a[href*="/auth/login"]')) || await visible(page.getByRole("button", { name: /^(Log in|登录)$/i }))) return fail("LOGIN_REQUIRED", "ChatGPT 网页账号未登录或登录已失效。");
-  const profile = page.locator('[data-testid="accounts-profile-button"],[data-testid="profile-button"],button[aria-label="Open profile menu"],button[aria-label="打开个人资料菜单"]');
-  if (!await visible(profile) || !await visible(page.locator(editorSelector))) return fail("PAGE_CHANGED", "无法确认已登录的网页输入区，可能尚未加载或网页结构已变化。");
-  return { ready: true, code: "READY", message: "网页账号可用" };
+  const profile = page.locator(profileSelector);
+  const editorCount = await editors(page).count();
+  const diagnostics = { editorCount, accountMarker: await profile.count() > 0, accountVisible: await visible(profile), documentReady: await page.evaluate(() => document.readyState) };
+  if (!editorCount) return { ...fail("EDITOR_NOT_FOUND", "未找到可见的 ChatGPT 输入框。请检查服务器网页是否加载完成，或是否有弹窗遮挡。"), diagnostics };
+  if (editorCount !== 1) return { ...fail("EDITOR_AMBIGUOUS", "发现多个 ChatGPT 输入框，无法确认应使用哪一个。"), diagnostics };
+  if (!await editors(page).first().isEditable()) return { ...fail("EDITOR_NOT_READY", "ChatGPT 输入框尚不可编辑，请等待服务器网页加载完成。"), diagnostics };
+  if (diagnostics.documentReady !== "complete") return { ...fail("PAGE_LOADING", "ChatGPT 网页仍在加载，请稍后检查连接。"), diagnostics };
+  // Account controls can remain in the DOM while their sidebar is collapsed.
+  // Still require an explicit account marker: an anonymous editor alone is not enough.
+  if (!diagnostics.accountMarker) return { ...fail("ACCOUNT_UNCONFIRMED", "已找到 ChatGPT 输入框，但未识别到账号菜单。请在服务器账号窗口展开侧栏或账号菜单后检查连接。"), diagnostics };
+  return { ready: true, code: "READY", message: "网页账号可用", diagnostics };
+}
+export async function waitChatGptReady(page: Page, options: { signal?: AbortSignal; timeoutMs?: number; pollMs?: number } = {}): Promise<ChatGptState> {
+  const until = Date.now() + (options.timeoutMs ?? 20000);
+  const transient = new Set(["PAGE_LOADING", "EDITOR_NOT_FOUND", "EDITOR_NOT_READY", "ACCOUNT_UNCONFIRMED"]);
+  while (true) {
+    if (options.signal?.aborted) throw new WebRelayError("CANCELLED", "已停止检查网页。");
+    const state = await inspectChatGpt(page);
+    if (state.ready || !transient.has(state.code) || Date.now() >= until) return state;
+    await new Promise(resolve=>setTimeout(resolve, options.pollMs ?? 250));
+  }
 }
 export async function sendChatGpt(page: Page, prompt: string, options: {
   signal: AbortSignal; onText: (text: string) => void; onSubmitted: (url: string) => Promise<void>;
@@ -26,7 +49,7 @@ export async function sendChatGpt(page: Page, prompt: string, options: {
   const checkAbort = () => { if (options.signal.aborted) throw new WebRelayError("CANCELLED", "已停止等待；已提交的问题不会自动重发。"); };
   checkAbort(); const state = await inspectChatGpt(page); if (!state.ready) throw new WebRelayError(state.code, state.message);
   if (await visible(page.locator(stopSelector))) throw new WebRelayError("WEBSITE_BUSY", "网页正在生成其他回复，请稍后再提问。");
-  const editor = page.locator(editorSelector); const draft = await editor.evaluate((element) => element instanceof HTMLTextAreaElement ? element.value : (element as HTMLElement).innerText);
+  const editor = editors(page).first(); const draft = await editor.evaluate((element) => element instanceof HTMLTextAreaElement ? element.value : (element as HTMLElement).innerText);
   if (draft.trim()) throw new WebRelayError("DRAFT_PRESENT", "网页输入框中已有未发送内容，程序没有覆盖，请本人先处理。");
   const usersBefore = await page.locator(userSelector).count(); const assistantsBefore = await page.locator(assistantSelector).count();
   let submitted = false; let confirmed = false; let lastText = ""; let changedAt = Date.now(); let boundUrl = "";
@@ -36,11 +59,11 @@ export async function sendChatGpt(page: Page, prompt: string, options: {
       if (count !== 1) throw new WebRelayError("UPLOAD_UNAVAILABLE", "无法唯一确认网页图片上传入口，问题未发送。");
       await page.locator('input[type="file"]').setInputFiles(options.images, { timeout: 10000 });
       await page.locator('[data-testid="attachment-preview"],[data-testid="file-thumbnail"],[data-testid="file-upload-item"],img[src^="blob:"]').first().waitFor({ state: "visible", timeout: 20000 });
-      for (let n = 0; n < 60 && !await page.locator(sendSelector).first().isEnabled(); n++) { checkAbort(); await new Promise(resolve=>setTimeout(resolve,500)); }
+      for (let n = 0; n < 60 && !await sendButton(page).isEnabled(); n++) { checkAbort(); await new Promise(resolve=>setTimeout(resolve,500)); }
       checkAbort();
     }
     await editor.fill(prompt, { timeout: 8000 }); checkAbort();
-    const send = page.locator(sendSelector).first(); if (!await send.isVisible() || !await send.isEnabled()) throw new WebRelayError("PAGE_CHANGED", "未找到可用的网页发送按钮，问题未自动提交。");
+    const send = sendButton(page); if (!await send.isVisible() || !await send.isEnabled()) throw new WebRelayError("PAGE_CHANGED", "未找到可用的网页发送按钮，问题未自动提交。");
     submitted = true; await options.onSubmitted("");
     // Exactly one click. Ambiguous submissions are never retried automatically.
     await send.click({ timeout: 8000 });
@@ -67,7 +90,7 @@ export async function sendChatGpt(page: Page, prompt: string, options: {
     }
     throw new WebRelayError("TIMEOUT", "等待网页回复超时；问题可能已提交，程序不会自动重发。");
   } catch (error) {
-    if (options.signal.aborted && confirmed && await visible(page.locator(stopSelector))) await page.locator(stopSelector).first().click({ timeout: 2000 }).catch(() => undefined);
+    if (options.signal.aborted && confirmed && await visible(page.locator(stopSelector))) await shown(page.locator(stopSelector)).first().click({ timeout: 2000 }).catch(() => undefined);
     if (error instanceof WebRelayError) throw error;
     throw new WebRelayError(submitted ? "SUBMISSION_UNCONFIRMED" : "PAGE_CHANGED", submitted ? "网页连接中断，无法确认提交结果，请先检查网页，不要重复发送。" : "网页操作未完成，请检查账号或页面结构。");
   }

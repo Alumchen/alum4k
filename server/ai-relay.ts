@@ -5,7 +5,7 @@ import { requireAuth, userFromRequest, type AuthenticatedRequest, type PublicUse
 import { AiError, aiOwner, aiRuntime, canUseAi, loadAi } from "./ai";
 import { pluginEnabled } from "./workbench";
 import { changeChats, findChat, loadChats } from "./ai-chat-store";
-import { inspectChatGpt, sendChatGpt, WebRelayError, conversationUrl } from "./chatgpt-web";
+import { waitChatGptReady, sendChatGpt, WebRelayError, conversationUrl } from "./chatgpt-web";
 import { supportsWebRelay, type AiChat, type StoredAiChat } from "../shared/ai-chat";
 import { captureAiReply } from "./ai-presentation";
 import { decodeAiImages, readAiImage, removeAiImages, saveAiImage } from "./ai-assets";
@@ -47,21 +47,21 @@ async function relayBrowser(user: PublicUser, target: string): Promise<{ page: P
   const page = await context.newPage(); page.setDefaultTimeout(8000);
   return { page, touch: async () => { await aiRuntime("/touch", "POST", { owner, id: remote.id }); } };
 }
-async function readyPage(page: Page, url: string) {
-  await page.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 });
-  let state = await inspectChatGpt(page);
-  for (let i = 0; i < 12 && state.code === "PAGE_CHANGED"; i++) { await new Promise((resolve) => setTimeout(resolve, 500)); state = await inspectChatGpt(page); }
-  return state;
+async function readyPage(page: Page, url: string, signal?: AbortSignal) {
+  try { await page.goto(url, { waitUntil: "domcontentloaded", timeout: 40000 }); }
+  catch (error) { if (!(error instanceof Error) || error.name !== "TimeoutError") throw new WebRelayError("PAGE_UNAVAILABLE", "服务器未能打开 ChatGPT 网页，请检查服务器网络或账号窗口；本次问题未发送。"); }
+  return waitChatGptReady(page, { signal });
 }
 async function runJob(user: PublicUser, auth: string, job: Job) {
   let page: Page | undefined; let timer: ReturnType<typeof setInterval> | undefined;
   try {
     const chat = findChat(await loadChats(user.username), job.chatId); const tool = await toolFor(user, chat.toolId);
     if (job.abort.signal.aborted) throw new WebRelayError("CANCELLED", "已取消。");
-    if (chat.messages.filter((message) => message.role === "user").length > 1 && !chat.remoteUrl) throw new WebRelayError("CONTEXT_UNAVAILABLE", "无法恢复此网页会话，请新建对话，旧问题不会重新发送。");
+    const priorReplies = chat.messages.filter(message=>message.role === "assistant" && message.requestId !== job.requestId);
+    if (!chat.remoteUrl && priorReplies.some(message=>message.submitted || message.status === "complete")) throw new WebRelayError("CONTEXT_UNAVAILABLE", "无法恢复此网页会话，请新建对话，旧问题不会重新发送。");
     const remote = await relayBrowser(user, tool.url); page = remote.page;
     timer = setInterval(() => { void (async () => { const current = await userFromRequest({ headers: { authorization: auth }, query: {} } as Request); if (!current) throw new Error("Expired"); await toolFor(current, chat.toolId); await remote.touch(); })().catch(() => job.abort.abort()); }, 15000);
-    const ready = await readyPage(page, chat.remoteUrl || tool.url); if (!ready.ready) throw new WebRelayError(ready.code, ready.message);
+    const ready = await readyPage(page, chat.remoteUrl || tool.url, job.abort.signal); if (!ready.ready) throw new WebRelayError(ready.code, ready.message);
     const input = chat.messages.find((message) => message.requestId === job.requestId && message.role === "user")!;
     const prompt = input.text;
     const images = await Promise.all((input.images || []).map(async image => ({ name: image.name, mimeType: image.mime, buffer: await readAiImage(user.username, chat.id, image.id) })));
@@ -76,7 +76,8 @@ async function runJob(user: PublicUser, auth: string, job: Job) {
     await changeChats(user.username, (items) => { const chat = findChat(items, job.chatId); const message = chat.messages.find((message) => message.role === "assistant" && message.requestId === job.requestId)!; message.text = reply.text; message.presentation = presentation; message.status = "complete"; chat.updatedAt = new Date().toISOString(); if (reply.remoteUrl) chat.remoteUrl = reply.remoteUrl; });
   } catch (error) {
     const code = job.abort.signal.aborted ? "CANCELLED" : error instanceof WebRelayError ? error.code : "RELAY_UNAVAILABLE";
-    const message = code === "CANCELLED" ? "已停止。已提交的问题不会自动重发。" : error instanceof WebRelayError || error instanceof AiError ? error.message : "文字中转连接失败，请检查服务器浏览器；程序不会自动重发问题。";
+    const detail = error instanceof WebRelayError || error instanceof AiError ? error.message : "图文中转连接失败，请检查服务器浏览器。";
+    const message = code === "CANCELLED" ? "已停止。已提交的问题不会自动重发。" : detail + (job.submitted ? " 问题可能已提交，不会自动重发。" : " 问题尚未提交。");
     await changeChats(user.username, (items) => { const chat = findChat(items, job.chatId); const result = chat.messages.find((item) => item.role === "assistant" && item.requestId === job.requestId)!; Object.assign(result, { status: code === "CANCELLED" ? "cancelled" : "error", text: job.text, code, error: message, submitted: job.submitted }); chat.updatedAt = new Date().toISOString(); }).catch(() => undefined);
   } finally { if (timer) clearInterval(timer); await page?.close().catch(() => undefined); if (jobs.get(user.username) === job) jobs.delete(user.username); }
 }

@@ -30,6 +30,8 @@ sudo bash scripts/setup-ai-linux.sh
 
 登录失效、验证码、网页限流、未发送草稿、无法确认已登录或网页结构变化时停止。每人同时仅处理一个问题。网页自动化只有一次发送动作，不会自动重试结果不确定的问题；请求标识防止网络重试重复提交。服务器重启后的未完成问题标记为中断，不会自动重放历史问题。
 
+页面识别会忽略隐藏的输入框/按钮副本，并允许账号菜单随侧栏折叠；仍需明确的账号控件标识，不能仅凭匿名输入框认定已登录。网页准备阶段最多等待20秒，不刷新或提交问题；输入框缺失、不可编辑、账号标识缺失等会分别提示。之前明确未提交的失败不阻止继续提出新问题，但不会自动补发旧问题。
+
 新回答先逐步返回文字，完成后保存图片、原貌和安全排版；只有确认属于本次问题且网页显示完成才标记为完整。超时或取消后的部分文字有明确状态。原貌尺寸最多1800×16000且不超过2800万像素，超长回答会回退为可恢复的排版并提示，排版独立图片最多12张。无法恢复官网会话地址时要求新建对话，不会重发历史问题伪造上下文。
 
 ## 资源与隐私
@@ -65,7 +67,7 @@ sudo docker ps --filter label=alumai.managed=1
 
 ## 验证与来源
 
-`npm test`、`npm run test:ai-relay`、`npm run test:ai`、`npm run test:production`。图文中转测试使用受控的本地网页和真实 CDP 连接，覆盖图片上传、新回答提取、原貌图片、安全表格/代码排版、私有图片越权、上下文、去重、停止、登录/验证/结构异常和桌面/手机界面；辅助窗口测试使用确定性RFB桌面。**这些测试不使用真实ChatGPT账号，不代表真实网页DOM、Linux Docker启动或第三方登录已经验收。**
+`npm test`、`npm run test:ai-adapter`、`npm run test:ai-relay`、`npm run test:ai`、`npm run test:production`。图文中转测试使用受控的本地网页和真实 CDP 连接，覆盖图片上传、新回答提取、原貌图片、安全表格/代码排版、私有图片越权、上下文、去重、停止、登录/验证/结构异常和桌面/手机界面；辅助窗口测试使用确定性RFB桌面。**这些测试不使用真实ChatGPT账号，不代表真实网页DOM、Linux Docker启动或第三方登录已经验收。**
 
 - [Playwright CDP连接](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp)及[网页定位器](https://playwright.dev/docs/locators)。只操作普通可见网页，不调用私有提供商接口，不修改检测、指纹或验证机制。
 - [Selenium Docker](https://github.com/SeleniumHQ/docker-selenium)。普通命令启动浏览器，不创建WebDriver会话。

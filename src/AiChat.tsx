@@ -33,7 +33,7 @@ export default function AiChat({ tool, user, canUse, ready, onLogin, onAccount }
     } catch (error) { setError((error as Error).message + (request.current ? " 可重新确认发送，同一请求不会重复提交。" : "")); }
     finally { setSending(false); }
   }
-  async function check() { setChecking(true); setError(""); try { const result = await writeJson<{ ready: boolean; message: string }>("/api/ai/relay/connect", "POST", { toolId: tool.id }); setStatus(result.message); } catch (error) { setError((error as Error).message); } finally { setChecking(false); } }
+  async function check() { setChecking(true); setError(""); try { const result = await writeJson<{ ready: boolean; message: string }>("/api/ai/relay/connect", "POST", { toolId: tool.id }); if (result.ready) { setStatus(result.message); } else { setStatus(""); setError(result.message); } } catch (error) { setError((error as Error).message); } finally { setChecking(false); } }
   function newChat() { if ((draft || images.length) && !confirm("放弃当前未发送的问题和图片？")) return; loadSequence.current++; setChat(null); setDraft(""); setImages([]); request.current = null; setError(""); }
   async function addImages(files: FileList | null) {
     if (!files) return;
