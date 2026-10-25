@@ -11,7 +11,7 @@ export function validOwner(owner) { if (typeof owner !== "string" || !/^[a-f0-9]
 export function browserArgs(owner, image) {
   validOwner(owner);
   if (!/^[a-z0-9./:_-]{1,200}$/i.test(image) || image.startsWith("-")) throw new Error("Invalid browser image.");
-  return ["run", "--detach", "--pull=never", "--name", "alumai-" + owner, "--label", "alumai.managed=1", "--label", "alumai.owner=" + owner, "--memory=2g", "--cpus=1.5", "--pids-limit=512", "--shm-size=512m", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--publish", "127.0.0.1::7900", "--mount", `type=volume,source=alumai-profile-${owner},target=/home/seluser/.alumai`, "--env", "SE_VNC_NO_PASSWORD=true", "--env", "SE_SCREEN_WIDTH=1440", "--env", "SE_SCREEN_HEIGHT=900", "--env", "SE_SCREEN_DEPTH=24", image];
+  return ["run", "--detach", "--pull=never", "--name", "alumai-" + owner, "--label", "alumai.managed=1", "--label", "alumai.owner=" + owner, "--memory=2g", "--cpus=1.5", "--pids-limit=512", "--shm-size=512m", "--cap-drop=ALL", "--security-opt=no-new-privileges", "--publish", "127.0.0.1::7900", "--publish", "127.0.0.1::9223", "--mount", `type=volume,source=alumai-profile-${owner},target=/home/seluser/.alumai`, "--env", "SE_VNC_NO_PASSWORD=true", "--env", "SE_SCREEN_WIDTH=1440", "--env", "SE_SCREEN_HEIGHT=900", "--env", "SE_SCREEN_DEPTH=24", image];
 }
 export async function publicTarget(raw, resolve = lookup) {
   if (typeof raw !== "string" || raw.length > 2000) throw new Error("Invalid target.");
@@ -26,13 +26,13 @@ export class BrowserRuntime {
   pending = Promise.resolve();
   constructor({ run = (args) => exec("docker", args, { timeout: 35000, maxBuffer: 1024 * 1024, windowsHide: true }), input = pipeDockerInput, image = "alumai-browser:1", maximum = 1, idleMs = 15 * 60000, resolve = lookup } = {}) { this.run = run; this.input = input; this.image = image; this.maximum = maximum; this.idleMs = idleMs; this.resolve = resolve; }
   serial(fn) { const next = this.pending.then(fn); this.pending = next.catch(() => undefined); return next; }
-  async health() { try { await this.run(["image", "inspect", this.image, "--format", "{{.Id}}"]); await this.run(["info", "--format", "{{.ServerVersion}}"]); return { ready: true, active: this.sessions.size, maximum: this.maximum }; } catch { return { ready: false, active: this.sessions.size, maximum: this.maximum, message: "Docker 未就绪或 AlumAI 浏览器镜像尚未安装。" }; } }
+  async health() { try { await this.run(["image", "inspect", this.image, "--format", "{{.Id}}"]); await this.run(["info", "--format", "{{.ServerVersion}}"]); return { ready: true, relayVersion: 1, active: this.sessions.size, maximum: this.maximum }; } catch { return { ready: false, active: this.sessions.size, maximum: this.maximum, message: "Docker 未就绪或 AlumAI 浏览器镜像尚未安装。" }; } }
   async cleanOrphans() { const result = await this.run(["ps", "-a", "--filter", "label=alumai.managed=1", "--format", "{{.Names}}"]); for (const name of result.stdout.trim().split(/\s+/).filter(Boolean)) { if (/^alumai-[a-f0-9]{64}$/.test(name)) await this.run(["rm", "--force", name]); } }
-  async start(owner, target) {
+  async start(owner, target, navigate = true) {
     validOwner(owner); const url = await publicTarget(target, this.resolve);
     return this.serial(async () => {
       let session = this.sessions.get(owner);
-      if (session) { await this.run(["exec", "--detach", "--user", "seluser", session.name, "/usr/bin/chromium", "--no-sandbox", "--user-data-dir=/home/seluser/.alumai/chrome", "--password-store=basic", "--new-tab", url]); session.touched = Date.now(); return session; }
+      if (session) { if (navigate) await this.run(["exec", "--detach", "--user", "seluser", session.name, "/usr/bin/chromium", "--no-sandbox", "--user-data-dir=/home/seluser/.alumai/chrome", "--password-store=basic", "--new-tab", url]); session.touched = Date.now(); return session; }
       if (this.sessions.size >= this.maximum) throw new Error("浏览器名额已满，请稍后再试。");
       const name = "alumai-" + owner;
       try {
@@ -41,6 +41,9 @@ export class BrowserRuntime {
         const bindings = JSON.parse(result.stdout)["7900/tcp"];
         if (!Array.isArray(bindings) || bindings.length !== 1 || bindings[0].HostIp !== "127.0.0.1" || !/^\d+$/.test(bindings[0].HostPort)) throw new Error("Invalid browser port binding.");
         const port = Number(bindings[0].HostPort); if (port < 1024 || port > 65535) throw new Error("Invalid browser port.");
+        const debug = JSON.parse(result.stdout)["9223/tcp"];
+        if (!Array.isArray(debug) || debug.length !== 1 || debug[0].HostIp !== "127.0.0.1" || !/^\d+$/.test(debug[0].HostPort)) throw new Error("Invalid relay port binding.");
+        const cdpPort = Number(debug[0].HostPort); if (cdpPort < 1024 || cdpPort > 65535 || cdpPort === port) throw new Error("Invalid relay port.");
         let ready = false;
         for (let i = 0; i < 60; i++) { try { const response = await fetch(`http://127.0.0.1:${port}/vnc.html`, { signal: AbortSignal.timeout(1000), redirect: "error" }); await response.body?.cancel(); if (response.ok) { ready = true; break; } } catch {} await new Promise((resolve) => setTimeout(resolve, 500)); }
         if (!ready) throw new Error("Browser desktop timeout.");
@@ -48,11 +51,12 @@ export class BrowserRuntime {
         for (let i = 0; i < 30; i++) { try { await this.run(["exec", "--user", "seluser", name, "/usr/bin/xdpyinfo"]); displayReady = true; break; } catch {} await new Promise((resolve) => setTimeout(resolve, 200)); }
         if (!displayReady) throw new Error("Browser display timeout.");
         await this.run(["exec", "--user", "seluser", name, "rm", "-f", "/home/seluser/.alumai/chrome/SingletonLock", "/home/seluser/.alumai/chrome/SingletonCookie", "/home/seluser/.alumai/chrome/SingletonSocket"]);
-        await this.run(["exec", "--detach", "--user", "seluser", name, "/usr/bin/chromium", "--no-sandbox", "--no-first-run", "--disable-dev-shm-usage", "--user-data-dir=/home/seluser/.alumai/chrome", "--password-store=basic", "--start-maximized", url]);
+        await this.run(["exec", "--detach", "--user", "seluser", name, "/usr/bin/chromium", "--no-sandbox", "--no-first-run", "--disable-dev-shm-usage", "--user-data-dir=/home/seluser/.alumai/chrome", "--password-store=basic", "--start-maximized", "--remote-debugging-port=9222", url]);
         let running = false;
         for (let i = 0; i < 20; i++) { try { await this.run(["exec", "--user", "seluser", name, "pgrep", "-x", "chromium"]); running = true; break; } catch {} await new Promise((resolve) => setTimeout(resolve, 200)); }
         if (!running) throw new Error("Chromium did not start.");
-        session = { id: crypto.randomUUID(), owner, name, port, touched: Date.now() }; this.sessions.set(owner, session); return session;
+        await this.run(["exec", "--detach", "--user", "seluser", name, "/usr/bin/socat", "TCP-LISTEN:9223,reuseaddr,fork", "TCP:127.0.0.1:9222"]);
+        session = { id: crypto.randomUUID(), owner, name, port, cdpPort, touched: Date.now() }; this.sessions.set(owner, session); return session;
       } catch { await this.run(["rm", "--force", name]).catch(() => undefined); throw new Error("浏览器启动失败，请管理员检查运行组件日志和服务器内存。"); }
     });
   }
@@ -71,11 +75,11 @@ export function createRuntimeServer(runtime, token) {
     try {
       const pathname = new URL(request.url || "/", "http://localhost").pathname;
       if (request.method === "GET" && pathname === "/health") { response.end(JSON.stringify(await runtime.health())); return; }
-      if (request.method !== "POST" || !["/start", "/touch", "/stop", "/clear", "/clipboard", "/clipboard/read"].includes(pathname)) { response.writeHead(404).end('{"message":"Not found"}'); return; }
+      if (request.method !== "POST" || !["/start", "/ensure", "/touch", "/stop", "/clear", "/clipboard", "/clipboard/read"].includes(pathname)) { response.writeHead(404).end('{"message":"Not found"}'); return; }
       let raw = ""; for await (const chunk of request) { raw += chunk; if (Buffer.byteLength(raw) > 131072) throw new Error("Request too large."); }
       const body = JSON.parse(raw); validOwner(body.owner);
-      const result = pathname === "/clipboard" ? await runtime.clipboard(body.owner, body.id, body.text) : pathname === "/clipboard/read" ? await runtime.readClipboard(body.owner, body.id) : pathname === "/start" ? await runtime.start(body.owner, body.target) : pathname === "/touch" ? runtime.touch(body.owner, body.id) : await runtime.stop(body.owner, pathname === "/clear");
-      response.end(JSON.stringify(pathname.startsWith("/clipboard") ? result : result ? { id: result.id, port: result.port } : { ok: true }));
+      const result = pathname === "/clipboard" ? await runtime.clipboard(body.owner, body.id, body.text) : pathname === "/clipboard/read" ? await runtime.readClipboard(body.owner, body.id) : (pathname === "/start" || pathname === "/ensure") ? await runtime.start(body.owner, body.target, pathname === "/start") : pathname === "/touch" ? runtime.touch(body.owner, body.id) : await runtime.stop(body.owner, pathname === "/clear");
+      response.end(JSON.stringify(pathname.startsWith("/clipboard") ? result : result ? { id: result.id, port: result.port, cdpPort: result.cdpPort } : { ok: true }));
     } catch (error) { response.writeHead(503).end(JSON.stringify({ message: error instanceof Error ? error.message : "Browser operation failed." })); }
   });
 }

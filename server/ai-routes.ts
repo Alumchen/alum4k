@@ -10,15 +10,17 @@ import { pluginEnabled } from "./workbench";
 import { escapeHtml, siteOrigin } from "./seo";
 import { loadSettings } from "./settings";
 import { AiError, loadAi, canUseAi, aiOwner, aiRuntime, saveAiTool, deleteAiTool, saveAiSettings } from "./ai";
+import { addAiRelayRoutes, cancelAiRelays } from "./ai-relay";
 
 type Ticket = { id: string; cookie: string; token: string; username: string; owner: string; runtimeId: string; port: number; expires: number; sockets: Set<Duplex> };
 type RuntimeSession = { id: string; port: number };
 const cookieName = "alumai_desktop";
 export function addAiRoutes(app: Express) {
+  addAiRelayRoutes(app);
   const tickets = new Map<string, Ticket>();
   const proxy = httpProxy.createProxyServer({ ws: true, changeOrigin: true });
   function remove(id: string) { const ticket = tickets.get(id); if (ticket) { ticket.sockets.forEach((socket) => socket.destroy()); tickets.delete(id); } }
-  function revoke(username?: string) { for (const ticket of tickets.values()) if (!username || ticket.username === username) remove(ticket.id); }
+  function revoke(username?: string) { cancelAiRelays(username); for (const ticket of tickets.values()) if (!username || ticket.username === username) remove(ticket.id); }
   const route = (handler: (request: AuthenticatedRequest, response: Response) => Promise<unknown>): RequestHandler => (request, response, next) => { handler(request, response).catch((error) => { if (error instanceof AiError) response.status(error.status).json({ message: error.message }); else if (error instanceof Error && error.name === "TypeError") response.status(400).json({ message: "请求字段或网站地址不正确。" }); else next(error); }); };
   async function allowed(request: AuthenticatedRequest) { if (!await pluginEnabled("alumai")) throw new AiError("AlumAI 模块暂未启用。", 503); const store = await loadAi(); if (!canUseAi(store, request.user)) throw new AiError("此个人远程浏览器仅对管理员及已授权的可信账号开放。", 403); return store; }
   function setCookie(response: Response, id: string, value: string, secure: boolean, clear = false) { response.append("Set-Cookie", `${cookieName}=${value}; Path=/ai/remote/${id}/; HttpOnly; SameSite=Strict; Max-Age=${clear ? 0 : 28800}${secure ? "; Secure" : ""}`); }
@@ -47,7 +49,7 @@ export function addAiRoutes(app: Express) {
   app.get(["/ai", "/ai/", "/ai/admin", "/ai/admin/*"], route(async (request, response) => {
     const admin = /^\/ai\/admin(?:\/|$)/.test(request.path); const store = await loadAi(); response.setHeader("Cache-Control", "no-store");
     if (!admin && !await pluginEnabled("alumai")) { response.status(503).type("html").send('<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>模块暂未启用</title><h1>AlumAI 暂未启用</h1><a href="/">返回工作台</a></html>'); return; }
-    const origin = siteOrigin(await loadSettings(), request); const head = `<!--alum4k:head:start--><title>${escapeHtml(store.settings.name)}${admin ? " · 管理后台" : " · 个人远程浏览器"}</title><meta name="description" content="${escapeHtml(store.settings.description)}"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="${escapeHtml(origin + (admin ? "/ai/admin" : "/ai"))}"><link rel="icon" href="/ai.svg"><!--alum4k:head:end-->`;
+    const origin = siteOrigin(await loadSettings(), request); const head = `<!--alum4k:head:start--><title>${escapeHtml(store.settings.name)}${admin ? " · 管理后台" : " · 网页账号图文中转"}</title><meta name="description" content="${escapeHtml(store.settings.description)}"><meta name="robots" content="noindex, nofollow"><link rel="canonical" href="${escapeHtml(origin + (admin ? "/ai/admin" : "/ai"))}"><link rel="icon" href="/ai.svg"><!--alum4k:head:end-->`;
     const html = (await readFile(path.resolve(process.cwd(), "dist/index.html"), "utf8")).replace(/<!--alum4k:head:start-->[\s\S]*?<!--alum4k:head:end-->/, () => head).replace(/<!--alum4k:content:start-->[\s\S]*?<!--alum4k:content:end-->/, () => `<!--alum4k:content:start--><main class="seo-content"><h1>${escapeHtml(store.settings.name)}</h1><p>${escapeHtml(store.settings.description)}</p></main><!--alum4k:content:end-->`); response.type("html").send(html);
   }));
   app.use("/ai/remote", (_request, response) => { response.status(404).set("Cache-Control", "no-store").end(); });

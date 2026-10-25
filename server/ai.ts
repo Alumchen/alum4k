@@ -7,7 +7,7 @@ import { listUsers, type PublicUser } from "./auth";
 const file = path.resolve(process.cwd(), "data/ai/settings.json");
 let pending: Promise<unknown> = Promise.resolve();
 export class AiError extends Error { constructor(message: string, public status = 400) { super(message); } }
-const defaults: AiStore = { revision: 0, settings: { name: "AlumAI", description: "你的个人 AI 远程工作空间", notice: "请在远程浏览器中自行登录 AI 网站。登录信息保留在服务器上的个人浏览器中，请勿使用他人的网站账号。", allowedUsers: [] }, tools: [
+const defaults: AiStore = { revision: 0, settings: { name: "AlumAI", description: "基于本人网页账号的图文问答工作空间", notice: "仅使用你本人的网页账号。登录资料保存在服务器个人浏览器中；对话记录按网站账号私有保存。", allowedUsers: [] }, tools: [
   { id: "chatgpt", name: "ChatGPT", description: "OpenAI 对话与创作", url: "https://chatgpt.com/", enabled: true, order: 0 },
   { id: "claude", name: "Claude", description: "Anthropic AI 助手", url: "https://claude.ai/", enabled: true, order: 1 },
   { id: "gemini", name: "Gemini", description: "Google AI 助手", url: "https://gemini.google.com/", enabled: true, order: 2 },

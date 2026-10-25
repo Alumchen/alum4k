@@ -4,7 +4,7 @@ import { WebSocketServer } from "ws";
 import type { AddressInfo } from "node:net";
 
 // A deterministic test desktop, never used by the application or advertised as ChatGPT.
-export async function startAiFixture() {
+export async function startAiFixture(options: { cdpPort?: number } = {}) {
   const token = "isolated-ai-runtime-token-" + "x".repeat(32); const requests: Array<{ path: string; body: any }> = []; const connections: Array<{ cookies: unknown; authorization: unknown }> = []; const keys: number[] = [];
   const desktop = createServer((_request, response) => response.end("Test desktop only")); const ws = new WebSocketServer({ server: desktop, path: "/websockify" });
   ws.on("connection", (socket, request) => {
@@ -38,9 +38,9 @@ export async function startAiFixture() {
   const clipboards = new Map<string,string>();
   const runtime = createServer(async (request, response) => {
     response.setHeader("content-type","application/json"); if (request.headers.authorization !== "Bearer " + token) { response.writeHead(401).end("{}"); return; }
-    if (request.url === "/health") { response.end(JSON.stringify({ready:true,active:sessions.size,maximum:2})); return; }
+    if (request.url === "/health") { response.end(JSON.stringify({ready:true,relayVersion:1,active:sessions.size,maximum:2})); return; }
     let raw=""; for await (const chunk of request) raw+=chunk; const body=JSON.parse(raw); requests.push({path:request.url!,body});
-    if (request.url === "/start") { const value=sessions.get(body.owner)||{id:randomUUID(),port:desktopPort}; sessions.set(body.owner,value); response.end(JSON.stringify(value)); }
+    if (request.url === "/start" || request.url === "/ensure") { const value=sessions.get(body.owner)||{id:randomUUID(),port:desktopPort,...(options.cdpPort ? { cdpPort: options.cdpPort } : {})}; sessions.set(body.owner,value); response.end(JSON.stringify(value)); }
     else if (request.url === "/touch") { const value=sessions.get(body.owner); if (!value || body.id!==value.id) response.writeHead(404).end(JSON.stringify({message:"Session expired"})); else response.end(JSON.stringify(value)); }
     else if (request.url === "/clipboard") { clipboards.set(body.owner,body.text); response.end('{"ok":true}'); }
     else if (request.url === "/clipboard/read") { response.end(JSON.stringify({text:clipboards.get(body.owner)||""})); }

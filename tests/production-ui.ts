@@ -76,12 +76,12 @@ try {
   await page.goto(origin + "/ai"); await page.getByRole("heading", { name: "ChatGPT", exact: true }).waitFor();
   assert.equal(await page.locator(".ai-app").evaluate((element) => getComputedStyle(element).display), "grid");
   assert.ok(requests.some((url) => /\/ai-[^/]+\.css$/.test(url)));
-  await page.getByRole("button", { name: "打开远程浏览器", exact: true }).click();
+  await page.getByRole("button", { name: "账号登录 / 验证", exact: true }).click();
   await page.getByRole("status").filter({ hasText: "已连接" }).waitFor();
   await page.waitForFunction(() => { const canvas = document.querySelector<HTMLCanvasElement>(".ai-remote-surface canvas"); return !!canvas && canvas.width > 100 && canvas.getContext("2d")!.getImageData(50,50,1,1).data[3] > 0; });
   await check(page, "production-ai-test-desktop.png");
   await page.setViewportSize({ width: 390, height: 844 }); await check(page, "production-ai-test-mobile.png");
-  await page.getByRole("button", { name: "关闭远程浏览器", exact: true }).click();
+  await page.getByRole("button", { name: "关闭账号窗口", exact: true }).click();
   await page.goto(origin + "/ai/admin"); await page.getByRole("heading", { name: "AI工具管理", exact: true }).waitFor();
   await check(page, "production-ai-admin.png");
   assert.deepEqual(errors, []);

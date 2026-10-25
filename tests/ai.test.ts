@@ -67,6 +67,16 @@ test("Disabled plugin blocks new sessions and keeps the independent admin access
   assert.equal((await req("/api/ai")).status,503);assert.equal((await req("/api/ai/sessions","POST",{toolId:"chatgpt"},admin)).status,503);assert.equal((await fetch(api.base+"/ai")).status,503);assert.equal((await fetch(api.base+"/ai/admin")).status,200);assert.equal((await req("/api/admin/ai","GET",undefined,admin)).status,200);
 });
 
+test("Relay debugging stays on loopback and ensure reuses a browser without opening another tab",async()=>{
+  const owner="c".repeat(64);const commands:string[][]=[];
+  assert.ok(browserArgs(owner,"alumai-browser:1").includes("127.0.0.1::9223"));
+  const runtime=new BrowserRuntime({run:async(args:string[])=>{commands.push(args);return{stdout:""};},resolve:async()=>[{address:"8.8.8.8",family:4}]});
+  runtime.sessions.set(owner,{id:"test-relay",owner,name:"alumai-"+owner,port:30000,cdpPort:30001,touched:0});
+  assert.equal((await runtime.start(owner,"https://chatgpt.com/",false)).cdpPort,30001);assert.equal(commands.length,0);
+  await runtime.start(owner,"https://chatgpt.com/");assert.ok(commands[0].includes("--new-tab"));
+  await runtime.stop(owner);assert.equal(runtime.sessions.size,0);assert.ok(commands.some(args=>args.includes("pkill")));assert.ok(commands.some(args=>args[0]==="stop"));assert.ok(!commands.some(args=>args[0]==="volume"));
+});
+
 test("AI deployment preserves the original public port and enables authenticated WebSocket forwarding",()=>{
   const source="server { listen 1023; server_name www.alum4k.com; root /opt/alum4k/dist; location /api/ { proxy_pass http://127.0.0.1:5174/api/; } }";
   const result=addPublicPageLocations(source);assert.match(result,/listen 1023;/);assert.match(result,/location \^~ \/ai\/remote\//);assert.match(result,/proxy_set_header Host \$http_host;/);assert.match(result,/proxy_set_header Upgrade \$http_upgrade;/);assert.match(result,/proxy_set_header Connection "upgrade";/);assert.match(result,/location \^~ \/api\/ai\//);

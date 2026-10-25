@@ -15,6 +15,8 @@ export default function Dialog({ title, onClose, children, className = "" }: {
     document.body.style.overflow = "hidden";
     panel.current?.querySelector<HTMLElement>("input, button, a, textarea, select")?.focus();
     function handleKey(event: KeyboardEvent) {
+      const dialogs = document.querySelectorAll('.site-dialog[aria-modal="true"]');
+      if (dialogs[dialogs.length - 1] !== panel.current) return;
       if (event.key === "Escape") { event.preventDefault(); closeRef.current(); }
       if (event.key !== "Tab") return;
       const fields = Array.from(panel.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]') ?? []);

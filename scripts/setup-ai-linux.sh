@@ -81,13 +81,13 @@ const token = /^ALUMAI_RUNTIME_TOKEN=([a-f0-9]{64})$/m.exec(config)?.[1];
 const port = Number(/^ALUMAI_RUNTIME_PORT=(\d+)$/m.exec(config)?.[1] || 5188);
 let ready = false;
 for (let attempt = 0; attempt < 12; attempt++) {
-  try { const response = await fetch(`http://127.0.0.1:${port}/health`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) }); if (response.ok && (await response.json()).ready) { ready = true; break; } } catch {}
+  try { const response = await fetch(`http://127.0.0.1:${port}/health`, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(4000) }); if (response.ok) { const state = await response.json(); if (state.ready && state.relayVersion === 1) { ready = true; break; } } } catch {}
   await new Promise((resolve) => setTimeout(resolve, 1000));
 }
 if (!ready) throw new Error("AlumAI runtime is not ready. Check: sudo journalctl -u alumai-runtime -n 80 --no-pager");
 NODE
 systemctl restart "${APP_NAME}"
 echo "AlumAI runtime installed. Open /ai/admin to check runtime status."
-echo "No extra public ports are required. Keep 5188, 5900, 7900 and 4444 closed in the cloud firewall."
+echo "No extra public ports are required. Keep 5188, 5900, 7900, 4444, 9222 and 9223 closed in the cloud firewall."
 echo "Login profiles stay in Docker volumes named alumai-profile-*. Keep these private."
 echo "Runtime logs: sudo journalctl -u alumai-runtime -n 80 --no-pager"
